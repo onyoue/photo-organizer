@@ -11,6 +11,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::folder::open_folder,
             commands::thumbnail::ensure_thumbnail,
+            commands::thumbnail::generate_thumbnails,
             commands::fileops::trash_bundle,
             commands::fileops::move_bundle,
             commands::fileops::copy_bundle,

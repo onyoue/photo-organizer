@@ -25,3 +25,4 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 webp = "0.3"
 kamadak-exif = "0.6"
 trash = "5"
+rayon = "1"

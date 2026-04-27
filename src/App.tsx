@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import type { BundleSummary, FolderIndex } from "./types/bundle";
-import type { ThumbMap } from "./types/thumb";
+import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
@@ -102,35 +103,53 @@ function App() {
     if (!index) return;
 
     const initial: ThumbMap = {};
+    const requests: ThumbnailRequest[] = [];
     for (const b of index.bundles) {
-      initial[b.bundle_id] = previewFile(b) ? { kind: "loading" } : { kind: "none" };
+      const file = previewFile(b);
+      if (file) {
+        initial[b.bundle_id] = { kind: "loading" };
+        requests.push({ bundle_id: b.bundle_id, file });
+      } else {
+        initial[b.bundle_id] = { kind: "none" };
+      }
     }
     setThumbs(initial);
 
-    let cancelled = false;
-    const folder = index.folder_path;
-    const tasks = index.bundles
-      .map((b) => ({ b, file: previewFile(b) }))
-      .filter((x): x is { b: BundleSummary; file: string } => x.file !== null);
+    if (requests.length === 0) return;
 
-    void Promise.all(
-      tasks.map(async ({ b, file }) => {
-        try {
-          const path = await invoke<string>("ensure_thumbnail", { folder, file });
+    let cancelled = false;
+    let unlisten: UnlistenFn | undefined;
+    const folder = index.folder_path;
+
+    void (async () => {
+      try {
+        // Subscribe BEFORE the batch invoke — otherwise fast cache hits could
+        // emit and be lost before the listener is registered.
+        unlisten = await listen<ThumbnailReadyEvent>("thumbnail-ready", (e) => {
           if (cancelled) return;
-          setThumbs((prev) => ({ ...prev, [b.bundle_id]: { kind: "ready", path } }));
-        } catch (e: unknown) {
-          if (cancelled) return;
+          const { bundle_id, path, error } = e.payload;
           setThumbs((prev) => ({
             ...prev,
-            [b.bundle_id]: { kind: "error", message: toMessage(e) },
+            [bundle_id]: error
+              ? { kind: "error", message: error }
+              : path
+                ? { kind: "ready", path }
+                : { kind: "none" },
           }));
+        });
+        if (cancelled) {
+          unlisten();
+          return;
         }
-      }),
-    );
+        await invoke("generate_thumbnails", { folder, requests });
+      } catch (e: unknown) {
+        if (!cancelled) setError(toMessage(e));
+      }
+    })();
 
     return () => {
       cancelled = true;
+      unlisten?.();
     };
   }, [index]);
 
