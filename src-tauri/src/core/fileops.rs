@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::core::thumbnail;
 use crate::error::{AppError, AppResult};
 
 const SIDECAR_SUFFIX: &str = ".photoorg.json";
@@ -29,7 +30,31 @@ fn augment_with_sidecars(folder: &Path, files: &[String]) -> Vec<String> {
     all.into_iter().collect()
 }
 
+/// Map each existing thumbnail cache file (under `<folder>/.photoorg/thumbs/`)
+/// for the given data files. Computed BEFORE any destructive op so the
+/// cache can be migrated/cleaned even after the source files are gone.
+fn collect_existing_thumbs(folder: &Path, files: &[String]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for f in files {
+        // Skip sidecars — they don't have thumbnails.
+        if f.ends_with(SIDECAR_SUFFIX) {
+            continue;
+        }
+        let source = folder.join(f);
+        if let Some(thumb) = thumbnail::cached_thumb_path(folder, &source) {
+            if thumb.exists() {
+                out.push(thumb);
+            }
+        }
+    }
+    out
+}
+
 pub fn trash_files(folder: &Path, files: &[String]) -> AppResult<()> {
+    // Compute cache paths BEFORE trashing — afterwards the source files
+    // are gone and we can no longer derive their hashes.
+    let orphan_thumbs = collect_existing_thumbs(folder, files);
+
     let augmented = augment_with_sidecars(folder, files);
     if augmented.is_empty() {
         return Ok(());
@@ -37,6 +62,11 @@ pub fn trash_files(folder: &Path, files: &[String]) -> AppResult<()> {
     let paths: Vec<PathBuf> = augmented.iter().map(|f| folder.join(f)).collect();
     trash::delete_all(paths.iter().map(|p| p.as_path()))
         .map_err(|e| AppError::Trash(e.to_string()))?;
+
+    // Best-effort thumb cleanup — derived data, no need to surface failures.
+    for thumb in orphan_thumbs {
+        let _ = fs::remove_file(thumb);
+    }
     Ok(())
 }
 
@@ -55,6 +85,7 @@ fn validate_dest(folder: &Path, dest: &Path) -> AppResult<()> {
 pub fn move_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()> {
     validate_dest(folder, dest)?;
     let augmented = augment_with_sidecars(folder, files);
+    let thumbs_to_migrate = collect_existing_thumbs(folder, files);
 
     // Pre-flight: refuse if any destination already exists, so we don't move
     // some and then bail halfway.
@@ -74,12 +105,15 @@ pub fn move_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()>
             fs::remove_file(&src)?;
         }
     }
+
+    migrate_thumbs(&thumbs_to_migrate, dest, MigrateMode::Move);
     Ok(())
 }
 
 pub fn copy_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()> {
     validate_dest(folder, dest)?;
     let augmented = augment_with_sidecars(folder, files);
+    let thumbs_to_migrate = collect_existing_thumbs(folder, files);
 
     for file in &augmented {
         let dst = dest.join(file);
@@ -93,7 +127,46 @@ pub fn copy_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()>
         let dst = dest.join(file);
         fs::copy(&src, &dst)?;
     }
+
+    migrate_thumbs(&thumbs_to_migrate, dest, MigrateMode::Copy);
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum MigrateMode {
+    Move,
+    Copy,
+}
+
+fn migrate_thumbs(src_thumbs: &[PathBuf], dest_folder: &Path, mode: MigrateMode) {
+    if src_thumbs.is_empty() {
+        return;
+    }
+    // Path-independent cache keys mean the destination filename is the same
+    // as the source filename — just rename/copy into the destination's
+    // .photoorg/thumbs/ directory.
+    let dest_thumb_dir = thumbnail::thumb_dir(dest_folder);
+    if fs::create_dir_all(&dest_thumb_dir).is_err() {
+        return;
+    }
+    for src_thumb in src_thumbs {
+        let Some(name) = src_thumb.file_name() else { continue };
+        let dst_thumb = dest_thumb_dir.join(name);
+        if dst_thumb.exists() {
+            continue; // Don't clobber a fresher cache entry at the destination.
+        }
+        match mode {
+            MigrateMode::Move => {
+                if fs::rename(src_thumb, &dst_thumb).is_err() {
+                    let _ = fs::copy(src_thumb, &dst_thumb)
+                        .and_then(|_| fs::remove_file(src_thumb));
+                }
+            }
+            MigrateMode::Copy => {
+                let _ = fs::copy(src_thumb, &dst_thumb);
+            }
+        }
+    }
 }
 
 pub fn open_path(path: &Path) -> AppResult<()> {
@@ -138,6 +211,13 @@ mod tests {
     fn touch(dir: &Path, name: &str, contents: &[u8]) {
         let mut f = File::create(dir.join(name)).unwrap();
         f.write_all(contents).unwrap();
+    }
+
+    fn make_jpg(dir: &Path, name: &str) {
+        // Real JPG so thumbnail::ensure_thumbnail succeeds.
+        let buf: image::ImageBuffer<image::Rgb<u8>, _> =
+            image::ImageBuffer::from_fn(40, 40, |_, _| image::Rgb([10u8, 200, 30]));
+        buf.save(dir.join(name)).unwrap();
     }
 
     #[test]
@@ -215,10 +295,8 @@ mod tests {
 
         copy_files(&src, &["DSC_0123.JPG".to_string()], &dst).unwrap();
 
-        // Source kept intact (it's a copy).
         assert!(src.join("DSC_0123.JPG").exists());
         assert!(src.join("DSC_0123.photoorg.json").exists());
-        // Destination got both.
         assert!(dst.join("DSC_0123.JPG").exists());
         assert!(dst.join("DSC_0123.photoorg.json").exists());
     }
@@ -237,7 +315,6 @@ mod tests {
 
     #[test]
     fn move_dedupes_sidecar_when_bundle_has_multiple_files() {
-        // RAW + JPG bundle → one shared sidecar should be moved exactly once.
         let src = tempdir();
         let dst = tempdir();
         touch(&src, "DSC_0123.DNG", b"raw");
@@ -266,10 +343,52 @@ mod tests {
 
         let err = move_files(&src, &["DSC_0123.JPG".to_string()], &dst).unwrap_err();
         assert!(matches!(err, AppError::DestinationExists(_)));
-        // Pre-flight should keep both source files in place.
         assert!(src.join("DSC_0123.JPG").exists());
         assert!(src.join("DSC_0123.photoorg.json").exists());
-        // And not clobber the existing destination sidecar.
         assert_eq!(fs::read(dst.join("DSC_0123.photoorg.json")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn move_migrates_thumbnail_cache() {
+        let src = tempdir();
+        let dst = tempdir();
+        make_jpg(&src, "DSC_0500.JPG");
+        let src_thumb = thumbnail::ensure_thumbnail(&src, &src.join("DSC_0500.JPG")).unwrap();
+        assert!(src_thumb.exists(), "precondition: src thumb exists");
+        let thumb_filename = src_thumb.file_name().unwrap().to_owned();
+
+        move_files(&src, &["DSC_0500.JPG".to_string()], &dst).unwrap();
+
+        assert!(!src_thumb.exists(), "src thumb should be gone after move");
+        let dst_thumb = thumbnail::thumb_dir(&dst).join(&thumb_filename);
+        assert!(dst_thumb.exists(), "dst thumb should exist after move");
+    }
+
+    #[test]
+    fn copy_duplicates_thumbnail_cache() {
+        let src = tempdir();
+        let dst = tempdir();
+        make_jpg(&src, "DSC_0501.JPG");
+        let src_thumb = thumbnail::ensure_thumbnail(&src, &src.join("DSC_0501.JPG")).unwrap();
+        let thumb_filename = src_thumb.file_name().unwrap().to_owned();
+
+        copy_files(&src, &["DSC_0501.JPG".to_string()], &dst).unwrap();
+
+        assert!(src_thumb.exists(), "src thumb should remain after copy");
+        assert!(thumbnail::thumb_dir(&dst).join(&thumb_filename).exists());
+    }
+
+    #[test]
+    fn trash_cleans_orphan_thumbnail() {
+        let src = tempdir();
+        make_jpg(&src, "DSC_0502.JPG");
+        let src_thumb = thumbnail::ensure_thumbnail(&src, &src.join("DSC_0502.JPG")).unwrap();
+        assert!(src_thumb.exists());
+
+        // Note: this actually moves the data file to the OS recycle bin.
+        // Fine for a test — trash is recoverable.
+        trash_files(&src, &["DSC_0502.JPG".to_string()]).unwrap();
+
+        assert!(!src_thumb.exists(), "thumb should be cleaned up after trash");
     }
 }

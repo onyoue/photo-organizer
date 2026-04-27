@@ -20,23 +20,42 @@ pub fn thumb_dir(folder: &Path) -> PathBuf {
     folder.join(APP_DIR).join(THUMB_SUBDIR)
 }
 
-fn cache_key(file_path: &Path, size: u64, mtime: SystemTime) -> String {
+fn cache_key(file_name: &str, size: u64, mtime: SystemTime) -> String {
     let mtime_secs = mtime
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let mut h = DefaultHasher::new();
-    file_path.to_string_lossy().hash(&mut h);
+    // Path-independent: the same file (by name/size/mtime) lands at the same
+    // cache key whether it lives in `shoot_2026/` or `shoot_2026/select/`.
+    // That lets us migrate the cached webp by simple rename when the user
+    // moves bundles between folders.
+    file_name.hash(&mut h);
     size.hash(&mut h);
     mtime_secs.hash(&mut h);
     format!("{:016x}", h.finish())
 }
 
-pub fn ensure_thumbnail(folder: &Path, source: &Path) -> AppResult<PathBuf> {
+fn key_for_file(source: &Path) -> AppResult<String> {
     let metadata = fs::metadata(source)?;
     let mtime = metadata.modified()?;
-    let key = cache_key(source, metadata.len(), mtime);
+    let file_name = source
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| AppError::Image("invalid file name".into()))?;
+    Ok(cache_key(file_name, metadata.len(), mtime))
+}
 
+/// The path where the cached thumbnail *would* live for the given source file,
+/// or None when metadata can't be read (e.g., the source file is gone). This
+/// is what fileops uses to follow the cache when bundles get reorganised.
+pub fn cached_thumb_path(folder: &Path, source: &Path) -> Option<PathBuf> {
+    let key = key_for_file(source).ok()?;
+    Some(thumb_dir(folder).join(format!("{key}.webp")))
+}
+
+pub fn ensure_thumbnail(folder: &Path, source: &Path) -> AppResult<PathBuf> {
+    let key = key_for_file(source)?;
     let dir = thumb_dir(folder);
     fs::create_dir_all(&dir)?;
     let out = dir.join(format!("{key}.webp"));
