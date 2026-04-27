@@ -9,11 +9,11 @@ use exif::{In, Reader, Tag};
 use image::imageops::FilterType;
 use image::DynamicImage;
 
+use crate::core::APP_DIR;
 use crate::error::{AppError, AppResult};
 
 const THUMB_LONG_EDGE: u32 = 320;
 const THUMB_QUALITY: f32 = 80.0;
-const APP_DIR: &str = ".photoorg";
 const THUMB_SUBDIR: &str = "thumbs";
 
 pub fn thumb_dir(folder: &Path) -> PathBuf {

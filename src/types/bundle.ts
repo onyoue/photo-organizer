@@ -17,5 +17,6 @@ export interface FolderIndex {
   version: number;
   scanned_at: string;
   folder_path: string;
+  folder_mtime: string;
   bundles: BundleSummary[];
 }

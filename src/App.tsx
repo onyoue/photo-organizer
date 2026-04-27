@@ -68,6 +68,36 @@ function App() {
     }
   }
 
+  async function rescanCurrent() {
+    if (!index || loading) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await invoke<FolderIndex>("open_folder", {
+        path: index.folder_path,
+        force: true,
+      });
+      setIndex(result);
+    } catch (e: unknown) {
+      setError(toMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Prune any selection / anchor that points at bundles no longer in the index
+  // (e.g. after a Re-scan that picked up filesystem deletions made externally).
+  useEffect(() => {
+    if (!index) return;
+    const ids = new Set(index.bundles.map((b) => b.bundle_id));
+    setSelectedIds((prev) => {
+      const filtered = new Set([...prev].filter((id) => ids.has(id)));
+      return filtered.size === prev.size ? prev : filtered;
+    });
+    setActiveId((prev) => (prev && !ids.has(prev) ? null : prev));
+    setAnchorId((prev) => (prev && !ids.has(prev) ? null : prev));
+  }, [index]);
+
   useEffect(() => {
     if (!index) return;
 
@@ -415,6 +445,11 @@ function App() {
         <button onClick={pickAndOpenFolder} disabled={loading}>
           {loading ? "Scanning..." : "Open Folder..."}
         </button>
+        {index && (
+          <button onClick={rescanCurrent} disabled={loading} title="Re-scan current folder, bypassing cache">
+            Re-scan
+          </button>
+        )}
         {index && (
           <>
             <span className="folder-path" title={index.folder_path}>

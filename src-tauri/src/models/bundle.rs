@@ -30,5 +30,6 @@ pub struct FolderIndex {
     pub version: u32,
     pub scanned_at: String,
     pub folder_path: String,
+    pub folder_mtime: String,
     pub bundles: Vec<BundleSummary>,
 }
