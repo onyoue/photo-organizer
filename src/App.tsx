@@ -8,6 +8,7 @@ import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
 import { joinPath } from "./utils/path";
+import { rangeIds } from "./utils/selection";
 import "./App.css";
 
 const TILE_SIZES = { S: 128, M: 200, L: 320 } as const;
@@ -23,16 +24,36 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [thumbs, setThumbs] = useState<ThumbMap>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Selection model:
+  //   activeId  – primary focus, drives the preview pane and is the anchor for arrow keys.
+  //   selectedIds – every bundle that batch ops apply to. Always includes activeId when set.
+  //   anchorId  – the start of a Shift-extended range; pinned by plain/Ctrl click.
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const [anchorId, setAnchorId] = useState<string | null>(null);
+
   const [tileLabel, setTileLabel] = useState<TileLabel>("M");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("fit");
   const [focusMode, setFocusMode] = useState(false);
   const [pixelOffset, setPixelOffset] = useState<PixelOffset>({ dx: 0, dy: 0 });
 
+  function resetSelection() {
+    setActiveId(null);
+    setSelectedIds(new Set());
+    setAnchorId(null);
+  }
+
+  function selectSingle(id: string) {
+    setActiveId(id);
+    setSelectedIds(new Set([id]));
+    setAnchorId(id);
+  }
+
   async function pickAndOpenFolder() {
     setError(null);
     setThumbs({});
-    setSelectedId(null);
+    resetSelection();
     setPixelOffset({ dx: 0, dy: 0 });
     try {
       const selected = await open({ directory: true, multiple: false });
@@ -83,83 +104,138 @@ function App() {
     };
   }, [index]);
 
-  const selectedBundle = useMemo(
-    () => index?.bundles.find((b) => b.bundle_id === selectedId) ?? null,
-    [index, selectedId],
+  const activeBundle = useMemo(
+    () => index?.bundles.find((b) => b.bundle_id === activeId) ?? null,
+    [index, activeId],
   );
-  const selectedIndex = useMemo(
+  const activeIndex = useMemo(
     () =>
-      index && selectedId
-        ? index.bundles.findIndex((b) => b.bundle_id === selectedId)
+      index && activeId
+        ? index.bundles.findIndex((b) => b.bundle_id === activeId)
         : -1,
-    [index, selectedId],
+    [index, activeId],
   );
 
   const previewSrc = useMemo(() => {
-    if (!selectedBundle || !index) return null;
-    const jpg = selectedBundle.files.find((f) => f.role === "jpeg");
+    if (!activeBundle || !index) return null;
+    const jpg = activeBundle.files.find((f) => f.role === "jpeg");
     if (!jpg) return null;
     return joinPath(index.folder_path, jpg.path);
-  }, [selectedBundle, index]);
+  }, [activeBundle, index]);
+
+  const handleTileClick = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      if (!index) return;
+      const meta = e.ctrlKey || e.metaKey;
+      if (e.shiftKey && anchorId) {
+        setSelectedIds(new Set(rangeIds(index.bundles, anchorId, id)));
+        setActiveId(id);
+        // anchorId stays — Shift extends from the same anchor on subsequent clicks.
+      } else if (meta) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+        setActiveId(id);
+        setAnchorId(id);
+      } else {
+        selectSingle(id);
+      }
+    },
+    [anchorId, index],
+  );
 
   const navigateBy = useCallback(
-    (delta: number) => {
+    (delta: number, extend: boolean) => {
       if (!index || index.bundles.length === 0) return;
-      const cur = selectedId
-        ? index.bundles.findIndex((b) => b.bundle_id === selectedId)
+      const cur = activeId
+        ? index.bundles.findIndex((b) => b.bundle_id === activeId)
         : -1;
-      const next =
+      const nextIdx =
         cur < 0
           ? delta > 0
             ? 0
             : index.bundles.length - 1
           : Math.max(0, Math.min(index.bundles.length - 1, cur + delta));
-      setSelectedId(index.bundles[next].bundle_id);
+      const nextId = index.bundles[nextIdx].bundle_id;
+
+      if (extend) {
+        const a = anchorId ?? activeId ?? nextId;
+        if (!anchorId) setAnchorId(a);
+        setSelectedIds(new Set(rangeIds(index.bundles, a, nextId)));
+        setActiveId(nextId);
+      } else {
+        selectSingle(nextId);
+      }
     },
-    [index, selectedId],
+    [activeId, anchorId, index],
   );
 
-  const removeBundleAndAdvance = useCallback((removedId: string) => {
+  const removeBundlesAndAdvance = useCallback((removedIds: ReadonlySet<string>) => {
     setIndex((prev) => {
       if (!prev) return prev;
-      const idx = prev.bundles.findIndex((b) => b.bundle_id === removedId);
-      const remaining = prev.bundles.filter((b) => b.bundle_id !== removedId);
+      const removedIndices = prev.bundles
+        .map((b, i) => (removedIds.has(b.bundle_id) ? i : -1))
+        .filter((i) => i >= 0);
+      const lowest = removedIndices.length > 0 ? Math.min(...removedIndices) : -1;
+      const remaining = prev.bundles.filter((b) => !removedIds.has(b.bundle_id));
+
       if (remaining.length === 0) {
-        setSelectedId(null);
-      } else {
-        const nextIdx = Math.min(Math.max(idx, 0), remaining.length - 1);
-        setSelectedId(remaining[nextIdx].bundle_id);
+        resetSelection();
+      } else if (lowest >= 0) {
+        const nextIdx = Math.min(lowest, remaining.length - 1);
+        const nextId = remaining[nextIdx].bundle_id;
+        setActiveId(nextId);
+        setSelectedIds(new Set([nextId]));
+        setAnchorId(nextId);
       }
       return { ...prev, bundles: remaining };
     });
   }, []);
 
+  const collectSelectedFiles = useCallback((): {
+    folder: string;
+    files: string[];
+    ids: Set<string>;
+  } | null => {
+    if (!index || selectedIds.size === 0) return null;
+    const ids = new Set(selectedIds);
+    const files: string[] = [];
+    for (const b of index.bundles) {
+      if (!ids.has(b.bundle_id)) continue;
+      for (const f of b.files) files.push(f.path);
+    }
+    return { folder: index.folder_path, files, ids };
+  }, [index, selectedIds]);
+
   const deleteSelected = useCallback(async () => {
-    if (!selectedBundle || !index || busy) return;
+    if (busy) return;
+    const job = collectSelectedFiles();
+    if (!job) return;
     setBusy(true);
     setError(null);
-    const removedId = selectedBundle.bundle_id;
     try {
-      await invoke("trash_bundle", {
-        folder: index.folder_path,
-        files: selectedBundle.files.map((f) => f.path),
-      });
-      removeBundleAndAdvance(removedId);
+      await invoke("trash_bundle", { folder: job.folder, files: job.files });
+      removeBundlesAndAdvance(job.ids);
     } catch (e: unknown) {
       setError(toMessage(e));
     } finally {
       setBusy(false);
     }
-  }, [busy, index, removeBundleAndAdvance, selectedBundle]);
+  }, [busy, collectSelectedFiles, removeBundlesAndAdvance]);
 
   const moveSelected = useCallback(async () => {
-    if (!selectedBundle || !index || busy) return;
+    if (busy) return;
+    const job = collectSelectedFiles();
+    if (!job) return;
     let dest: string | null;
     try {
       const picked = await open({
         directory: true,
         multiple: false,
-        defaultPath: index.folder_path,
+        defaultPath: job.folder,
       });
       dest = typeof picked === "string" ? picked : null;
     } catch (e: unknown) {
@@ -170,29 +246,26 @@ function App() {
 
     setBusy(true);
     setError(null);
-    const removedId = selectedBundle.bundle_id;
     try {
-      await invoke("move_bundle", {
-        folder: index.folder_path,
-        files: selectedBundle.files.map((f) => f.path),
-        dest,
-      });
-      removeBundleAndAdvance(removedId);
+      await invoke("move_bundle", { folder: job.folder, files: job.files, dest });
+      removeBundlesAndAdvance(job.ids);
     } catch (e: unknown) {
       setError(toMessage(e));
     } finally {
       setBusy(false);
     }
-  }, [busy, index, removeBundleAndAdvance, selectedBundle]);
+  }, [busy, collectSelectedFiles, removeBundlesAndAdvance]);
 
   const copySelected = useCallback(async () => {
-    if (!selectedBundle || !index || busy) return;
+    if (busy) return;
+    const job = collectSelectedFiles();
+    if (!job) return;
     let dest: string | null;
     try {
       const picked = await open({
         directory: true,
         multiple: false,
-        defaultPath: index.folder_path,
+        defaultPath: job.folder,
       });
       dest = typeof picked === "string" ? picked : null;
     } catch (e: unknown) {
@@ -204,24 +277,20 @@ function App() {
     setBusy(true);
     setError(null);
     try {
-      await invoke("copy_bundle", {
-        folder: index.folder_path,
-        files: selectedBundle.files.map((f) => f.path),
-        dest,
-      });
+      await invoke("copy_bundle", { folder: job.folder, files: job.files, dest });
     } catch (e: unknown) {
       setError(toMessage(e));
     } finally {
       setBusy(false);
     }
-  }, [busy, index, selectedBundle]);
+  }, [busy, collectSelectedFiles]);
 
-  const openSelected = useCallback(
+  const openActive = useCallback(
     async (role: "raw" | "jpeg" | null) => {
-      if (!selectedBundle || !index) return;
+      if (!activeBundle || !index) return;
       const file = role
-        ? selectedBundle.files.find((f) => f.role === role)
-        : selectedBundle.files[0];
+        ? activeBundle.files.find((f) => f.role === role)
+        : activeBundle.files[0];
       if (!file) return;
       try {
         await invoke("open_path", {
@@ -231,15 +300,41 @@ function App() {
         setError(toMessage(e));
       }
     },
-    [index, selectedBundle],
+    [activeBundle, index],
   );
+
+  const selectAll = useCallback(() => {
+    if (!index) return;
+    setSelectedIds(new Set(index.bundles.map((b) => b.bundle_id)));
+    if (!activeId && index.bundles.length > 0) {
+      setActiveId(index.bundles[0].bundle_id);
+      setAnchorId(index.bundles[0].bundle_id);
+    }
+  }, [activeId, index]);
+
+  const collapseToActive = useCallback(() => {
+    if (activeId) {
+      setSelectedIds(new Set([activeId]));
+      setAnchorId(activeId);
+    } else {
+      resetSelection();
+    }
+  }, [activeId]);
 
   useEffect(() => {
     const isInput = (el: EventTarget | null) =>
       el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
     const onKey = (e: KeyboardEvent) => {
       if (isInput(e.target)) return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const mod = e.ctrlKey || e.metaKey;
+
+      if (mod && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        selectAll();
+        return;
+      }
+      if (mod || e.altKey) return;
+
       switch (e.key) {
         case " ":
           e.preventDefault();
@@ -252,11 +347,15 @@ function App() {
           break;
         case "ArrowLeft":
           e.preventDefault();
-          navigateBy(-1);
+          navigateBy(-1, e.shiftKey);
           break;
         case "ArrowRight":
           e.preventDefault();
-          navigateBy(1);
+          navigateBy(1, e.shiftKey);
+          break;
+        case "Escape":
+          e.preventDefault();
+          collapseToActive();
           break;
         case "Delete":
           e.preventDefault();
@@ -275,13 +374,21 @@ function App() {
         case "o":
         case "O":
           e.preventDefault();
-          void openSelected("jpeg");
+          void openActive("jpeg");
           break;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigateBy, deleteSelected, moveSelected, copySelected, openSelected]);
+  }, [
+    navigateBy,
+    deleteSelected,
+    moveSelected,
+    copySelected,
+    openActive,
+    selectAll,
+    collapseToActive,
+  ]);
 
   const totalFiles = index?.bundles.reduce((n, b) => n + b.files.length, 0) ?? 0;
   const readyCount = Object.values(thumbs).filter((t) => t.kind === "ready").length;
@@ -341,8 +448,9 @@ function App() {
             <ThumbnailGrid
               bundles={index.bundles}
               thumbs={thumbs}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              activeId={activeId}
+              selectedIds={selectedIds}
+              onTileClick={handleTileClick}
               tileSize={TILE_SIZES[tileLabel]}
             />
           </div>
@@ -354,12 +462,13 @@ function App() {
               onPixelOffsetChange={setPixelOffset}
             />
             <DetailPanel
-              bundle={selectedBundle}
+              bundle={activeBundle}
+              selectedCount={selectedIds.size}
               busy={busy}
               onDelete={deleteSelected}
               onMove={moveSelected}
               onCopy={copySelected}
-              onOpen={openSelected}
+              onOpen={openActive}
             />
           </aside>
         </div>
@@ -367,22 +476,27 @@ function App() {
 
       {index && index.bundles.length > 0 && (
         <footer className="statusbar">
-          {selectedBundle ? (
+          {activeBundle ? (
             <>
-              <span className="status-name">{selectedBundle.base_name}</span>
+              <span className="status-name">{activeBundle.base_name}</span>
               <span className="status-pos">
-                ({selectedIndex + 1}/{index.bundles.length})
+                ({activeIndex + 1}/{index.bundles.length})
               </span>
             </>
           ) : (
             <span className="status-name muted">No selection</span>
+          )}
+          {selectedIds.size > 1 && (
+            <span className="mode-tag selected">{selectedIds.size} selected</span>
           )}
           <span className={`mode-tag ${previewMode}`}>
             {previewMode === "fit" ? "Fit" : "100%"}
           </span>
           {focusMode && <span className="mode-tag focus">Focus</span>}
           {busy && <span className="mode-tag busy">Working…</span>}
-          <span className="hints">Space focus · F 100% · ← → nav · Del/M/C/O</span>
+          <span className="hints">
+            Click · Shift / Ctrl click · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O
+          </span>
         </footer>
       )}
     </main>

@@ -3,6 +3,7 @@ import { formatSize } from "../utils/format";
 
 interface Props {
   bundle: BundleSummary | null;
+  selectedCount: number;
   onDelete: () => void;
   onMove: () => void;
   onCopy: () => void;
@@ -10,33 +11,54 @@ interface Props {
   busy: boolean;
 }
 
-export function DetailPanel({ bundle, onDelete, onMove, onCopy, onOpen, busy }: Props) {
+function suffix(n: number): string {
+  return n > 1 ? ` (${n})` : "";
+}
+
+export function DetailPanel({
+  bundle,
+  selectedCount,
+  onDelete,
+  onMove,
+  onCopy,
+  onOpen,
+  busy,
+}: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
   }
 
   const hasRaw = bundle.files.some((f) => f.role === "raw");
   const hasJpeg = bundle.files.some((f) => f.role === "jpeg");
+  const multi = selectedCount > 1;
 
   return (
     <div className="detail-panel">
-      <div className="detail-name">{bundle.base_name}</div>
+      <div className="detail-name">
+        {bundle.base_name}
+        {multi && <span className="detail-sub"> · {selectedCount - 1} more selected</span>}
+      </div>
 
       <div className="detail-actions">
-        <button type="button" onClick={onDelete} disabled={busy} title="Delete (move to trash) — Delete">
-          Delete
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={busy}
+          title="Delete (move to trash) — Delete"
+        >
+          Delete{suffix(selectedCount)}
         </button>
         <button type="button" onClick={onMove} disabled={busy} title="Move to folder — M">
-          Move…
+          Move…{suffix(selectedCount)}
         </button>
         <button type="button" onClick={onCopy} disabled={busy} title="Copy to folder — C">
-          Copy…
+          Copy…{suffix(selectedCount)}
         </button>
         <button
           type="button"
           onClick={() => onOpen("jpeg")}
           disabled={busy || !hasJpeg}
-          title="Open JPG in default app — O"
+          title="Open active bundle's JPG in default app — O"
         >
           Open JPG
         </button>
@@ -44,7 +66,7 @@ export function DetailPanel({ bundle, onDelete, onMove, onCopy, onOpen, busy }: 
           type="button"
           onClick={() => onOpen("raw")}
           disabled={busy || !hasRaw}
-          title="Open RAW in default app"
+          title="Open active bundle's RAW in default app"
         >
           Open RAW
         </button>

@@ -6,9 +6,10 @@ import type { ThumbState } from "../types/thumb";
 interface Props {
   bundle: BundleSummary;
   thumb: ThumbState;
+  active: boolean;
   selected: boolean;
   size: number;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
 }
 
 function rolesLabel(b: BundleSummary): string {
@@ -24,12 +25,13 @@ function rolesLabel(b: BundleSummary): string {
   return out.join(" + ");
 }
 
-function BundleTileImpl({ bundle, thumb, selected, size, onClick }: Props) {
+function BundleTileImpl({ bundle, thumb, active, selected, size, onClick }: Props) {
   const roles = rolesLabel(bundle);
+  const className = `tile${active ? " active" : selected ? " selected" : ""}`;
   return (
     <button
       type="button"
-      className={`tile${selected ? " selected" : ""}`}
+      className={className}
       onClick={onClick}
       title={`${bundle.base_name}\n${roles}`}
       style={{ width: size }}

@@ -199,8 +199,14 @@ html,
 }
 
 .tile.selected {
+  border-color: #b0c8ff;
+  background: #eaf1ff;
+}
+
+.tile.active {
   border-color: #396cd8;
   box-shadow: 0 0 0 1px #396cd8;
+  background: #ffffff;
 }
 
 .tile-thumb {
@@ -328,6 +334,13 @@ html,
   font-weight: 700;
   font-size: 13px;
   margin-bottom: 6px;
+}
+
+.detail-sub {
+  font-family: Inter, "Segoe UI", sans-serif;
+  font-weight: 400;
+  font-size: 11px;
+  color: #777;
 }
 
 .detail-actions {
@@ -472,6 +485,11 @@ html,
   color: #846200;
 }
 
+.mode-tag.selected {
+  background: #d8eafc;
+  color: #1a4d8c;
+}
+
 .hints {
   margin-left: auto;
   color: #888;
@@ -519,11 +537,22 @@ html,
   .tile {
     background: #2a2a2a;
   }
+  .tile.selected {
+    background: #1f3050;
+    border-color: #4a6db0;
+  }
+  .tile.active {
+    background: #2a2a2a;
+    border-color: #5a8cd8;
+  }
   .tile-thumb {
     background: #1a1a1a;
   }
   .tile-caption {
-    background: #2a2a2a;
+    background: inherit;
+  }
+  .detail-sub {
+    color: #999;
   }
   .detail-panel {
     background: #232323;

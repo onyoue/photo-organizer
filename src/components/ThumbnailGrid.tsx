@@ -7,8 +7,9 @@ import { BundleTile } from "./BundleTile";
 interface Props {
   bundles: BundleSummary[];
   thumbs: ThumbMap;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
+  activeId: string | null;
+  selectedIds: ReadonlySet<string>;
+  onTileClick: (id: string, e: React.MouseEvent) => void;
   tileSize: number;
 }
 
@@ -17,17 +18,23 @@ const ROW_GAP = 8;
 const CAPTION_HEIGHT = 36;
 const SCROLLER_PADDING = 8;
 
-export function ThumbnailGrid({ bundles, thumbs, selectedId, onSelect, tileSize }: Props) {
+export function ThumbnailGrid({
+  bundles,
+  thumbs,
+  activeId,
+  selectedIds,
+  onTileClick,
+  tileSize,
+}: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
   useLayoutEffect(() => {
     if (!parentRef.current) return;
     const el = parentRef.current;
-    setWidth(el.clientWidth);
-    const ro = new ResizeObserver(() => {
-      setWidth(el.clientWidth);
-    });
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -84,9 +91,10 @@ export function ThumbnailGrid({ bundles, thumbs, selectedId, onSelect, tileSize 
                   key={b.bundle_id}
                   bundle={b}
                   thumb={thumb}
-                  selected={selectedId === b.bundle_id}
+                  active={activeId === b.bundle_id}
+                  selected={selectedIds.has(b.bundle_id)}
                   size={tileSize}
-                  onClick={() => onSelect(b.bundle_id)}
+                  onClick={(e) => onTileClick(b.bundle_id, e)}
                 />
               );
             })}
