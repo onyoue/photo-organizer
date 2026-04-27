@@ -542,6 +542,18 @@ html,
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #1a4d8c;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(26, 77, 140, 0.3);
+}
+
+.post-url:hover {
+  color: #396cd8;
+  text-decoration-color: currentColor;
 }
 
 .post-delete {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { ask, open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
@@ -439,6 +440,14 @@ function App() {
     [activeSidecar, persistSidecar],
   );
 
+  const handleOpenUrl = useCallback(async (url: string) => {
+    try {
+      await openUrl(url);
+    } catch (e: unknown) {
+      setError(toMessage(e));
+    }
+  }, []);
+
   const openActive = useCallback(
     async (role: "raw" | "jpeg" | null) => {
       if (!activeBundle || !index) return;
@@ -644,6 +653,7 @@ function App() {
               onCancelAddPost={() => setAddingPost(false)}
               onSavePost={savePost}
               onDeletePost={deletePost}
+              onOpenUrl={handleOpenUrl}
             />
           </aside>
         </div>

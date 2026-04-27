@@ -8,6 +8,7 @@ import {
   type PostBy,
   type PostRecord,
 } from "../types/sidecar";
+import { normalizeUrl } from "../utils/url";
 
 interface Props {
   sidecar: BundleSidecar | null;
@@ -18,6 +19,7 @@ interface Props {
   onCancelAdd: () => void;
   onSavePost: (post: Omit<PostRecord, "id">) => void;
   onDeletePost: (id: string) => void;
+  onOpenUrl: (url: string) => void;
 }
 
 export function PostsSection({
@@ -29,6 +31,7 @@ export function PostsSection({
   onCancelAdd,
   onSavePost,
   onDeletePost,
+  onOpenUrl,
 }: Props) {
   const posts = sidecar?.posts ?? [];
 
@@ -65,9 +68,14 @@ export function PostsSection({
                 <span className={`post-platform plat-${p.platform}`}>
                   {PLATFORM_LABELS[p.platform]}
                 </span>
-                <span className="post-url" title={p.url}>
+                <button
+                  type="button"
+                  className="post-url"
+                  onClick={() => onOpenUrl(p.url)}
+                  title={`Open ${p.url}`}
+                >
                   {p.url}
-                </span>
+                </button>
                 <button
                   type="button"
                   className="post-delete"
@@ -113,7 +121,7 @@ function AddPostForm({ onSave, onCancel, busy }: FormProps) {
     if (!valid) return;
     const post: Omit<PostRecord, "id"> = {
       platform,
-      url: trimmedUrl,
+      url: normalizeUrl(trimmedUrl),
       by,
       posted_by_handle: by === "model" && handle.trim() ? handle.trim() : undefined,
       note: note.trim() || undefined,

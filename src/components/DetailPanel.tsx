@@ -19,6 +19,7 @@ interface Props {
   onCancelAddPost: () => void;
   onSavePost: (post: Omit<PostRecord, "id">) => void;
   onDeletePost: (id: string) => void;
+  onOpenUrl: (url: string) => void;
 }
 
 function suffix(n: number): string {
@@ -40,6 +41,7 @@ export function DetailPanel({
   onCancelAddPost,
   onSavePost,
   onDeletePost,
+  onOpenUrl,
 }: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
@@ -110,6 +112,7 @@ export function DetailPanel({
         onCancelAdd={onCancelAddPost}
         onSavePost={onSavePost}
         onDeletePost={onDeletePost}
+        onOpenUrl={onOpenUrl}
       />
     </div>
   );
