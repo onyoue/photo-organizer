@@ -11,6 +11,9 @@ export interface BundleSummary {
   bundle_id: string;
   base_name: string;
   files: BundleFile[];
+  has_posts: boolean;
+  post_platforms: string[];
+  has_model_post: boolean;
 }
 
 export interface FolderIndex {

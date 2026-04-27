@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
@@ -7,9 +7,11 @@ use chrono::{DateTime, Utc};
 use ulid::Ulid;
 
 use crate::core::index_cache::{self, INDEX_VERSION};
+use crate::core::sidecar as sidecar_io;
 use crate::core::APP_DIR;
 use crate::error::{AppError, AppResult};
 use crate::models::bundle::{BundleFile, BundleSummary, FileRole, FolderIndex};
+use crate::models::sidecar::{BundleSidecar, PostBy};
 
 const SIDECAR_SUFFIX: &str = ".photoorg.json";
 
@@ -125,10 +127,18 @@ fn walk_folder(
                 .get(base_name.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| Ulid::new().to_string());
+
+            // A corrupt sidecar shouldn't break a folder scan — treat as no posts.
+            let sidecar = sidecar_io::read(folder, &base_name).ok().flatten();
+            let (has_posts, post_platforms, has_model_post) = collect_post_info(sidecar.as_ref());
+
             BundleSummary {
                 bundle_id,
                 base_name,
                 files,
+                has_posts,
+                post_platforms,
+                has_model_post,
             }
         })
         .collect();
@@ -142,6 +152,28 @@ fn walk_folder(
         folder_mtime,
         bundles,
     })
+}
+
+fn collect_post_info(sidecar: Option<&BundleSidecar>) -> (bool, Vec<String>, bool) {
+    let Some(s) = sidecar else {
+        return (false, vec![], false);
+    };
+    if s.posts.is_empty() {
+        return (false, vec![], false);
+    }
+    let mut platforms: BTreeSet<&'static str> = BTreeSet::new();
+    let mut has_model = false;
+    for post in &s.posts {
+        platforms.insert(post.platform.as_str());
+        if post.by == PostBy::Model {
+            has_model = true;
+        }
+    }
+    (
+        true,
+        platforms.into_iter().map(String::from).collect(),
+        has_model,
+    )
 }
 
 fn role_sort_key(role: FileRole) -> u8 {
@@ -203,6 +235,60 @@ mod tests {
         assert_eq!(idx.bundles.len(), 1);
         assert_eq!(idx.bundles[0].base_name, "DSC_0123");
         assert_eq!(idx.bundles[0].files.len(), 1);
+    }
+
+    #[test]
+    fn reads_post_info_from_sidecar() {
+        use crate::core::sidecar::SIDECAR_VERSION;
+        use crate::models::sidecar::{BundleSidecar, PostRecord, Platform};
+
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0001.JPG", b"jpg");
+        touch(&tmp, "DSC_0002.JPG", b"jpg");
+
+        // Bundle 1 has a self post on X and a model post on Instagram.
+        let sidecar = BundleSidecar {
+            version: SIDECAR_VERSION,
+            bundle_id: Ulid::new().to_string(),
+            base_name: "DSC_0001".into(),
+            rating: None,
+            flag: None,
+            tags: vec![],
+            posts: vec![
+                PostRecord {
+                    id: Ulid::new().to_string(),
+                    platform: Platform::X,
+                    url: "https://x.com/me".into(),
+                    posted_at: None,
+                    by: PostBy::Self_,
+                    posted_by_handle: None,
+                    note: None,
+                },
+                PostRecord {
+                    id: Ulid::new().to_string(),
+                    platform: Platform::Instagram,
+                    url: "https://instagram.com/model".into(),
+                    posted_at: None,
+                    by: PostBy::Model,
+                    posted_by_handle: Some("@m".into()),
+                    note: None,
+                },
+            ],
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        };
+        sidecar_io::write(&tmp, &sidecar).unwrap();
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        let b1 = idx.bundles.iter().find(|b| b.base_name == "DSC_0001").unwrap();
+        assert!(b1.has_posts);
+        assert_eq!(b1.post_platforms, vec!["instagram", "x"]); // BTreeSet → sorted
+        assert!(b1.has_model_post);
+
+        let b2 = idx.bundles.iter().find(|b| b.base_name == "DSC_0002").unwrap();
+        assert!(!b2.has_posts);
+        assert!(b2.post_platforms.is_empty());
+        assert!(!b2.has_model_post);
     }
 
     #[test]

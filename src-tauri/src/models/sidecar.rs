@@ -1,12 +1,23 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum Platform {
     X,
     Instagram,
     Note,
     Other,
+}
+
+impl Platform {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Platform::X => "x",
+            Platform::Instagram => "instagram",
+            Platform::Note => "note",
+            Platform::Other => "other",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

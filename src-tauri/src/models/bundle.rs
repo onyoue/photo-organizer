@@ -23,6 +23,16 @@ pub struct BundleSummary {
     pub bundle_id: String,
     pub base_name: String,
     pub files: Vec<BundleFile>,
+    /// Sidecar-derived: any posts recorded for this bundle.
+    #[serde(default)]
+    pub has_posts: bool,
+    /// Sidecar-derived: distinct platforms ("x", "instagram", "note", "other").
+    #[serde(default)]
+    pub post_platforms: Vec<String>,
+    /// Sidecar-derived: at least one post is by the model rather than the
+    /// photographer — rendered with a dashed visual cue (REQUIREMENTS F3.4).
+    #[serde(default)]
+    pub has_model_post: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

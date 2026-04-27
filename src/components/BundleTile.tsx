@@ -25,6 +25,13 @@ function rolesLabel(b: BundleSummary): string {
   return out.join(" + ");
 }
 
+const PLATFORM_GLYPH: Record<string, string> = {
+  x: "X",
+  instagram: "I",
+  note: "n",
+  other: "?",
+};
+
 function BundleTileImpl({ bundle, thumb, active, selected, size, onClick }: Props) {
   const roles = rolesLabel(bundle);
   const className = `tile${active ? " active" : selected ? " selected" : ""}`;
@@ -43,6 +50,28 @@ function BundleTileImpl({ bundle, thumb, active, selected, size, onClick }: Prop
         {thumb.kind === "loading" && <div className="tile-spinner" />}
         {thumb.kind === "error" && <div className="tile-status err">!</div>}
         {thumb.kind === "none" && <div className="tile-status">—</div>}
+
+        {(bundle.has_posts || bundle.has_model_post) && (
+          <div className="tile-overlay">
+            {bundle.post_platforms.map((p) => (
+              <span
+                key={p}
+                className={`tile-overlay-badge plat-${p}`}
+                title={`Posted on ${p}`}
+              >
+                {PLATFORM_GLYPH[p] ?? "?"}
+              </span>
+            ))}
+            {bundle.has_model_post && (
+              <span
+                className="tile-overlay-badge model"
+                title="Includes a model-side post"
+              >
+                M
+              </span>
+            )}
+          </div>
+        )}
       </div>
       <div className="tile-caption">
         <div className="tile-name">{bundle.base_name}</div>

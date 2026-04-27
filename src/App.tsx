@@ -400,6 +400,18 @@ function App() {
           folder: index.folder_path,
           sidecar: next,
         });
+        // Keep the in-memory BundleSummary in sync so tile overlays update
+        // immediately, without waiting for a re-scan.
+        const summary = postSummaryOf(next);
+        setIndex((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            bundles: prev.bundles.map((b) =>
+              b.bundle_id === next.bundle_id ? { ...b, ...summary } : b,
+            ),
+          };
+        });
         return true;
       } catch (e: unknown) {
         setError(toMessage(e));
@@ -704,6 +716,22 @@ function emptySidecar(bundle: BundleSummary): BundleSidecar {
     posts: [],
     created_at: now,
     updated_at: now,
+  };
+}
+
+function postSummaryOf(sidecar: BundleSidecar): {
+  has_posts: boolean;
+  post_platforms: string[];
+  has_model_post: boolean;
+} {
+  if (sidecar.posts.length === 0) {
+    return { has_posts: false, post_platforms: [], has_model_post: false };
+  }
+  const platforms = Array.from(new Set(sidecar.posts.map((p) => p.platform))).sort();
+  return {
+    has_posts: true,
+    post_platforms: platforms,
+    has_model_post: sidecar.posts.some((p) => p.by === "model"),
   };
 }
 
