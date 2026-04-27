@@ -16,6 +16,8 @@ pub fn run() {
             commands::fileops::move_bundle,
             commands::fileops::copy_bundle,
             commands::fileops::open_path,
+            commands::sidecar::get_bundle_sidecar,
+            commands::sidecar::save_bundle_sidecar,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

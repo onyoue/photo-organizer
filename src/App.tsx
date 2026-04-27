@@ -5,6 +5,8 @@ import { ask, open } from "@tauri-apps/plugin-dialog";
 import type { BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
+import type { BundleSidecar, PostRecord } from "./types/sidecar";
+import { generatePostId } from "./components/PostsSection";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
@@ -38,6 +40,10 @@ function App() {
   const [previewMode, setPreviewMode] = useState<PreviewMode>("fit");
   const [focusMode, setFocusMode] = useState(false);
   const [pixelOffset, setPixelOffset] = useState<PixelOffset>({ dx: 0, dy: 0 });
+
+  const [activeSidecar, setActiveSidecar] = useState<BundleSidecar | null>(null);
+  const [sidecarLoading, setSidecarLoading] = useState(false);
+  const [addingPost, setAddingPost] = useState(false);
 
   function resetSelection() {
     setActiveId(null);
@@ -170,6 +176,42 @@ function App() {
     const jpg = activeBundle.files.find((f) => f.role === "jpeg");
     if (!jpg) return null;
     return joinPath(index.folder_path, jpg.path);
+  }, [activeBundle, index]);
+
+  // Load (or reset) the active bundle's sidecar whenever the active selection
+  // changes. Editing posts on the wrong bundle would be a nasty bug, so we
+  // gate the displayed sidecar on a token tied to this load.
+  useEffect(() => {
+    if (!activeBundle || !index) {
+      setActiveSidecar(null);
+      setSidecarLoading(false);
+      setAddingPost(false);
+      return;
+    }
+    let cancelled = false;
+    setSidecarLoading(true);
+    setAddingPost(false);
+    const folder = index.folder_path;
+    const baseName = activeBundle.base_name;
+    void (async () => {
+      try {
+        const loaded = await invoke<BundleSidecar | null>("get_bundle_sidecar", {
+          folder,
+          baseName,
+        });
+        if (cancelled) return;
+        setActiveSidecar(loaded ?? emptySidecar(activeBundle));
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setError(toMessage(e));
+        setActiveSidecar(emptySidecar(activeBundle));
+      } finally {
+        if (!cancelled) setSidecarLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [activeBundle, index]);
 
   const handleTileClick = useCallback(
@@ -349,6 +391,54 @@ function App() {
     }
   }, [busy, collectSelectedFiles]);
 
+  const persistSidecar = useCallback(
+    async (next: BundleSidecar): Promise<boolean> => {
+      if (!index) return false;
+      try {
+        await invoke("save_bundle_sidecar", {
+          folder: index.folder_path,
+          sidecar: next,
+        });
+        return true;
+      } catch (e: unknown) {
+        setError(toMessage(e));
+        return false;
+      }
+    },
+    [index],
+  );
+
+  const savePost = useCallback(
+    async (post: Omit<PostRecord, "id">) => {
+      if (!activeSidecar) return;
+      const next: BundleSidecar = {
+        ...activeSidecar,
+        posts: [...activeSidecar.posts, { ...post, id: generatePostId() }],
+        updated_at: new Date().toISOString(),
+      };
+      const ok = await persistSidecar(next);
+      if (ok) {
+        setActiveSidecar(next);
+        setAddingPost(false);
+      }
+    },
+    [activeSidecar, persistSidecar],
+  );
+
+  const deletePost = useCallback(
+    async (postId: string) => {
+      if (!activeSidecar) return;
+      const next: BundleSidecar = {
+        ...activeSidecar,
+        posts: activeSidecar.posts.filter((p) => p.id !== postId),
+        updated_at: new Date().toISOString(),
+      };
+      const ok = await persistSidecar(next);
+      if (ok) setActiveSidecar(next);
+    },
+    [activeSidecar, persistSidecar],
+  );
+
   const openActive = useCallback(
     async (role: "raw" | "jpeg" | null) => {
       if (!activeBundle || !index) return;
@@ -440,6 +530,12 @@ function App() {
           e.preventDefault();
           void openActive("jpeg");
           break;
+        case "Enter":
+          if (activeBundle && !addingPost && !busy) {
+            e.preventDefault();
+            setAddingPost(true);
+          }
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -452,6 +548,9 @@ function App() {
     openActive,
     selectAll,
     collapseToActive,
+    activeBundle,
+    addingPost,
+    busy,
   ]);
 
   const totalFiles = index?.bundles.reduce((n, b) => n + b.files.length, 0) ?? 0;
@@ -538,6 +637,13 @@ function App() {
               onMove={moveSelected}
               onCopy={copySelected}
               onOpen={openActive}
+              sidecar={activeSidecar}
+              sidecarLoading={sidecarLoading}
+              addingPost={addingPost}
+              onStartAddPost={() => setAddingPost(true)}
+              onCancelAddPost={() => setAddingPost(false)}
+              onSavePost={savePost}
+              onDeletePost={deletePost}
             />
           </aside>
         </div>
@@ -564,7 +670,7 @@ function App() {
           {focusMode && <span className="mode-tag focus">Focus</span>}
           {busy && <span className="mode-tag busy">Working…</span>}
           <span className="hints">
-            Click · Shift / Ctrl click · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O
+            Click · Shift/Ctrl · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O · Enter
           </span>
         </footer>
       )}
@@ -576,6 +682,19 @@ function toMessage(e: unknown): string {
   if (typeof e === "string") return e;
   if (e instanceof Error) return e.message;
   return String(e);
+}
+
+function emptySidecar(bundle: BundleSummary): BundleSidecar {
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    bundle_id: bundle.bundle_id,
+    base_name: bundle.base_name,
+    tags: [],
+    posts: [],
+    created_at: now,
+    updated_at: now,
+  };
 }
 
 export default App;

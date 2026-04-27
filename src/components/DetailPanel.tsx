@@ -1,5 +1,7 @@
 import type { BundleSummary } from "../types/bundle";
+import type { BundleSidecar, PostRecord } from "../types/sidecar";
 import { formatSize } from "../utils/format";
+import { PostsSection } from "./PostsSection";
 
 interface Props {
   bundle: BundleSummary | null;
@@ -9,6 +11,14 @@ interface Props {
   onCopy: () => void;
   onOpen: (role: "raw" | "jpeg" | null) => void;
   busy: boolean;
+
+  sidecar: BundleSidecar | null;
+  sidecarLoading: boolean;
+  addingPost: boolean;
+  onStartAddPost: () => void;
+  onCancelAddPost: () => void;
+  onSavePost: (post: Omit<PostRecord, "id">) => void;
+  onDeletePost: (id: string) => void;
 }
 
 function suffix(n: number): string {
@@ -23,6 +33,13 @@ export function DetailPanel({
   onCopy,
   onOpen,
   busy,
+  sidecar,
+  sidecarLoading,
+  addingPost,
+  onStartAddPost,
+  onCancelAddPost,
+  onSavePost,
+  onDeletePost,
 }: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
@@ -83,6 +100,17 @@ export function DetailPanel({
           </li>
         ))}
       </ul>
+
+      <PostsSection
+        sidecar={sidecar}
+        loading={sidecarLoading}
+        adding={addingPost}
+        busy={busy}
+        onStartAdd={onStartAddPost}
+        onCancelAdd={onCancelAddPost}
+        onSavePost={onSavePost}
+        onDeletePost={onDeletePost}
+      />
     </div>
   );
 }

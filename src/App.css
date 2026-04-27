@@ -430,6 +430,225 @@ html,
   font-size: 11px;
 }
 
+/* ---------- Posts ---------- */
+.posts-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.posts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.posts-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #444;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.posts-add {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.posts-add:hover:not(:disabled) {
+  border-color: #396cd8;
+}
+
+.posts-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.posts-loading,
+.posts-empty {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+}
+
+.posts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.post-item {
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 3px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.post-item.by-model {
+  border-style: dashed;
+}
+
+.post-line {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.post-platform {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: #eaeaea;
+  color: #444;
+}
+
+.post-platform.plat-x {
+  background: #1a1a1a;
+  color: #ffffff;
+}
+.post-platform.plat-instagram {
+  background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+  color: #ffffff;
+}
+.post-platform.plat-note {
+  background: #41c9b4;
+  color: #ffffff;
+}
+.post-platform.plat-other {
+  background: #d8e0e8;
+  color: #1a4d8c;
+}
+
+.post-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1a4d8c;
+}
+
+.post-delete {
+  border: 0;
+  background: transparent;
+  color: #888;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.post-delete:hover:not(:disabled) {
+  color: #c44;
+}
+
+.post-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: #777;
+  display: flex;
+  gap: 6px;
+}
+
+.post-by.by-model {
+  color: #8a4a8a;
+  font-weight: 600;
+}
+
+.post-by.by-self {
+  color: #1a6020;
+}
+
+.post-note {
+  font-style: italic;
+}
+
+/* ---------- Add post form ---------- */
+.post-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #f4f4f4;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.post-form-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.post-form-row > input,
+.post-form-row > select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #ffffff;
+  font-family: inherit;
+}
+
+.post-form-row select {
+  flex: 0 0 110px;
+}
+
+.post-by-row {
+  font-size: 11px;
+}
+
+.post-by-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.post-form-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.post-form-actions button {
+  padding: 4px 12px;
+  font-size: 12px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.post-form-actions button[type="submit"] {
+  background: #396cd8;
+  color: #ffffff;
+  border-color: #396cd8;
+}
+
+.post-form-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---------- Status bar ---------- */
 .statusbar {
   display: flex;
@@ -553,6 +772,36 @@ html,
   }
   .detail-sub {
     color: #999;
+  }
+  .posts-section {
+    border-top-color: #3a3a3a;
+  }
+  .posts-title {
+    color: #c0c0c0;
+  }
+  .posts-add,
+  .post-form-row > input,
+  .post-form-row > select,
+  .post-form-actions button {
+    background: #2a2a2a;
+    color: #e8e8e8;
+    border-color: #4a4a4a;
+  }
+  .post-form-actions button[type="submit"] {
+    background: #396cd8;
+    color: #ffffff;
+    border-color: #396cd8;
+  }
+  .post-form {
+    background: #232323;
+    border-color: #3a3a3a;
+  }
+  .post-item {
+    background: #2a2a2a;
+    border-color: #3a3a3a;
+  }
+  .post-url {
+    color: #8ab4f8;
   }
   .detail-panel {
     background: #232323;
