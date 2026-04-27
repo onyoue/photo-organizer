@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 import type { BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
@@ -214,6 +214,21 @@ function App() {
     if (busy) return;
     const job = collectSelectedFiles();
     if (!job) return;
+
+    if (job.ids.size > 1) {
+      let proceed = false;
+      try {
+        proceed = await ask(
+          `Move ${job.ids.size} bundles (${job.files.length} files) to trash?`,
+          { title: "Delete bundles", kind: "warning", okLabel: "Move to Trash" },
+        );
+      } catch (e: unknown) {
+        setError(toMessage(e));
+        return;
+      }
+      if (!proceed) return;
+    }
+
     setBusy(true);
     setError(null);
     try {
