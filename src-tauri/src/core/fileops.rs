@@ -1,12 +1,40 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, AppResult};
 
-pub fn trash_files(paths: &[PathBuf]) -> AppResult<()> {
-    if paths.is_empty() {
+const SIDECAR_SUFFIX: &str = ".photoorg.json";
+
+/// Given a list of bundle data files, return that list plus any
+/// `<base_name>.photoorg.json` sidecar that exists on disk for the same
+/// basename. The user expects post metadata to follow when they reorganise
+/// their picks into select/ or delivery/ subfolders.
+fn augment_with_sidecars(folder: &Path, files: &[String]) -> Vec<String> {
+    let mut all: BTreeSet<String> = files.iter().cloned().collect();
+    for f in files {
+        let Some(stem) = Path::new(f).file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        // Don't recurse into the sidecar's own stem ("DSC_0123.photoorg") in
+        // the unlikely case the caller already included one.
+        if stem.ends_with(".photoorg") {
+            continue;
+        }
+        let sidecar = format!("{stem}{SIDECAR_SUFFIX}");
+        if folder.join(&sidecar).exists() {
+            all.insert(sidecar);
+        }
+    }
+    all.into_iter().collect()
+}
+
+pub fn trash_files(folder: &Path, files: &[String]) -> AppResult<()> {
+    let augmented = augment_with_sidecars(folder, files);
+    if augmented.is_empty() {
         return Ok(());
     }
+    let paths: Vec<PathBuf> = augmented.iter().map(|f| folder.join(f)).collect();
     trash::delete_all(paths.iter().map(|p| p.as_path()))
         .map_err(|e| AppError::Trash(e.to_string()))?;
     Ok(())
@@ -26,17 +54,18 @@ fn validate_dest(folder: &Path, dest: &Path) -> AppResult<()> {
 
 pub fn move_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()> {
     validate_dest(folder, dest)?;
+    let augmented = augment_with_sidecars(folder, files);
 
-    // Pre-flight: refuse if any destination already exists, so we don't move some
-    // and then bail halfway.
-    for file in files {
+    // Pre-flight: refuse if any destination already exists, so we don't move
+    // some and then bail halfway.
+    for file in &augmented {
         let dst = dest.join(file);
         if dst.exists() {
             return Err(AppError::DestinationExists(dst.display().to_string()));
         }
     }
 
-    for file in files {
+    for file in &augmented {
         let src = folder.join(file);
         let dst = dest.join(file);
         if fs::rename(&src, &dst).is_err() {
@@ -50,15 +79,16 @@ pub fn move_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()>
 
 pub fn copy_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()> {
     validate_dest(folder, dest)?;
+    let augmented = augment_with_sidecars(folder, files);
 
-    for file in files {
+    for file in &augmented {
         let dst = dest.join(file);
         if dst.exists() {
             return Err(AppError::DestinationExists(dst.display().to_string()));
         }
     }
 
-    for file in files {
+    for file in &augmented {
         let src = folder.join(file);
         let dst = dest.join(file);
         fs::copy(&src, &dst)?;
@@ -134,9 +164,7 @@ mod tests {
 
         let err = copy_files(&src, &["a.txt".to_string()], &dst).unwrap_err();
         assert!(matches!(err, AppError::DestinationExists(_)));
-        // Source unchanged.
         assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"x");
-        // Destination not overwritten.
         assert_eq!(fs::read(dst.join("a.txt")).unwrap(), b"y");
     }
 
@@ -161,5 +189,87 @@ mod tests {
         touch(&src, "a.txt", b"x");
         let err = move_files(&src, &["a.txt".to_string()], &src).unwrap_err();
         assert!(matches!(err, AppError::SameSourceAndDestination));
+    }
+
+    #[test]
+    fn move_takes_sidecar_with_it() {
+        let src = tempdir();
+        let dst = tempdir();
+        touch(&src, "DSC_0123.JPG", b"img");
+        touch(&src, "DSC_0123.photoorg.json", b"{}");
+
+        move_files(&src, &["DSC_0123.JPG".to_string()], &dst).unwrap();
+
+        assert!(!src.join("DSC_0123.JPG").exists());
+        assert!(!src.join("DSC_0123.photoorg.json").exists());
+        assert!(dst.join("DSC_0123.JPG").exists());
+        assert!(dst.join("DSC_0123.photoorg.json").exists());
+    }
+
+    #[test]
+    fn copy_takes_sidecar_with_it() {
+        let src = tempdir();
+        let dst = tempdir();
+        touch(&src, "DSC_0123.JPG", b"img");
+        touch(&src, "DSC_0123.photoorg.json", b"{}");
+
+        copy_files(&src, &["DSC_0123.JPG".to_string()], &dst).unwrap();
+
+        // Source kept intact (it's a copy).
+        assert!(src.join("DSC_0123.JPG").exists());
+        assert!(src.join("DSC_0123.photoorg.json").exists());
+        // Destination got both.
+        assert!(dst.join("DSC_0123.JPG").exists());
+        assert!(dst.join("DSC_0123.photoorg.json").exists());
+    }
+
+    #[test]
+    fn move_works_when_no_sidecar_exists() {
+        let src = tempdir();
+        let dst = tempdir();
+        touch(&src, "DSC_0123.JPG", b"img");
+
+        move_files(&src, &["DSC_0123.JPG".to_string()], &dst).unwrap();
+
+        assert!(dst.join("DSC_0123.JPG").exists());
+        assert!(!dst.join("DSC_0123.photoorg.json").exists());
+    }
+
+    #[test]
+    fn move_dedupes_sidecar_when_bundle_has_multiple_files() {
+        // RAW + JPG bundle → one shared sidecar should be moved exactly once.
+        let src = tempdir();
+        let dst = tempdir();
+        touch(&src, "DSC_0123.DNG", b"raw");
+        touch(&src, "DSC_0123.JPG", b"jpg");
+        touch(&src, "DSC_0123.photoorg.json", b"{}");
+
+        move_files(
+            &src,
+            &["DSC_0123.DNG".to_string(), "DSC_0123.JPG".to_string()],
+            &dst,
+        )
+        .unwrap();
+
+        assert!(dst.join("DSC_0123.DNG").exists());
+        assert!(dst.join("DSC_0123.JPG").exists());
+        assert!(dst.join("DSC_0123.photoorg.json").exists());
+    }
+
+    #[test]
+    fn move_collision_on_sidecar_aborts_before_data_moves() {
+        let src = tempdir();
+        let dst = tempdir();
+        touch(&src, "DSC_0123.JPG", b"img");
+        touch(&src, "DSC_0123.photoorg.json", b"new");
+        touch(&dst, "DSC_0123.photoorg.json", b"old");
+
+        let err = move_files(&src, &["DSC_0123.JPG".to_string()], &dst).unwrap_err();
+        assert!(matches!(err, AppError::DestinationExists(_)));
+        // Pre-flight should keep both source files in place.
+        assert!(src.join("DSC_0123.JPG").exists());
+        assert!(src.join("DSC_0123.photoorg.json").exists());
+        // And not clobber the existing destination sidecar.
+        assert_eq!(fs::read(dst.join("DSC_0123.photoorg.json")).unwrap(), b"old");
     }
 }

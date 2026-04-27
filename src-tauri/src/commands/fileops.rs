@@ -6,8 +6,7 @@ use crate::error::AppResult;
 #[tauri::command]
 pub async fn trash_bundle(folder: String, files: Vec<String>) -> AppResult<()> {
     let folder = PathBuf::from(folder);
-    let paths: Vec<PathBuf> = files.into_iter().map(|f| folder.join(f)).collect();
-    tauri::async_runtime::spawn_blocking(move || fileops::trash_files(&paths))
+    tauri::async_runtime::spawn_blocking(move || fileops::trash_files(&folder, &files))
         .await
         .expect("trash task panicked")
 }
