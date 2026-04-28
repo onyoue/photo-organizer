@@ -10,6 +10,7 @@ import type { BundleSidecar, Flag, PostRecord } from "./types/sidecar";
 import type { AppSettings } from "./types/settings";
 import { generatePostId } from "./components/PostsSection";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { CheatsheetOverlay } from "./components/CheatsheetOverlay";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
@@ -60,6 +61,35 @@ function App() {
 
   const [appSettings, setAppSettings] = useState<AppSettings>({});
   const [showSettings, setShowSettings] = useState(false);
+  const [showCheatsheet, setShowCheatsheet] = useState(false);
+
+  // F1 hold-to-show keyboard cheatsheet overlay. Bound at window level so it
+  // works regardless of focus, including while typing in the tag/post inputs.
+  // Listening to blur catches the case where the user alt-tabs away while
+  // F1 is still down — keyup never fires for us in that case.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F1") {
+        e.preventDefault();
+        setShowCheatsheet(true);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "F1") {
+        e.preventDefault();
+        setShowCheatsheet(false);
+      }
+    };
+    const onBlur = () => setShowCheatsheet(false);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
 
   // Load app-wide settings on mount.
   useEffect(() => {
@@ -875,6 +905,8 @@ function App() {
           busy={false}
         />
       )}
+
+      <CheatsheetOverlay visible={showCheatsheet} />
 
       {error && (
         <div className="error">

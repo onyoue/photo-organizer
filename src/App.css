@@ -118,6 +118,99 @@ html,
   border-color: #396cd8;
 }
 
+/* ---------- Cheatsheet overlay ---------- */
+.cheatsheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.cheatsheet {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  padding: 16px 20px;
+  max-width: 720px;
+  width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.cheatsheet-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.cheatsheet-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cheatsheet-hint {
+  font-size: 11px;
+  color: #888;
+}
+
+.cheatsheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px 24px;
+}
+
+.cheatsheet-group h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #555;
+  margin: 0 0 6px 0;
+}
+
+.cheatsheet-group dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 4px;
+  align-items: baseline;
+}
+
+.cheatsheet-row {
+  display: contents;
+}
+
+.cheatsheet-row dt {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.cheatsheet-row dd {
+  margin: 0;
+  font-size: 12px;
+  color: #1a1a1a;
+}
+
+.cheatsheet kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  background: #f0f0f0;
+  border: 1px solid #c0c0c0;
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  color: #1a1a1a;
+}
+
 /* ---------- Settings dialog ---------- */
 .settings-backdrop {
   position: fixed;
@@ -1219,6 +1312,24 @@ html,
   }
   .settings-hint {
     color: #888;
+  }
+  .cheatsheet {
+    background: #2a2a2a;
+    color: #e8e8e8;
+  }
+  .cheatsheet-header {
+    border-bottom-color: #3a3a3a;
+  }
+  .cheatsheet-group h3 {
+    color: #c0c0c0;
+  }
+  .cheatsheet-row dd {
+    color: #e8e8e8;
+  }
+  .cheatsheet kbd {
+    background: #1f1f1f;
+    border-color: #4a4a4a;
+    color: #e8e8e8;
   }
   .filter-bar {
     background: #232323;
