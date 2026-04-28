@@ -15,13 +15,48 @@ use crate::models::sidecar::{BundleSidecar, PostBy};
 
 const SIDECAR_SUFFIX: &str = ".photoorg.json";
 
-fn classify_extension(ext: &str) -> FileRole {
+/// Classify a file by its extension and whether the stem is a derived variant
+/// of the bundle's canonical basename. Variant JPGs (e.g. DSC_0123_edit.JPG
+/// alongside DSC_0123.JPG/.DNG) get the Developed role rather than Jpeg, so
+/// the UI can offer "operate on developed only" actions.
+fn classify_extension(ext: &str, is_variant: bool) -> FileRole {
     match ext.to_ascii_lowercase().as_str() {
         "dng" | "raf" | "pef" | "arw" | "cr3" | "nef" | "raw" => FileRole::Raw,
+        "jpg" | "jpeg" if is_variant => FileRole::Developed,
         "jpg" | "jpeg" => FileRole::Jpeg,
-        "xmp" | "pp3" | "dop" | "rwl" => FileRole::Sidecar,
+        // .json covers RAW developer apps that drop their own metadata sidecars
+        // alongside the developed file (the user is building one such app).
+        "xmp" | "pp3" | "dop" | "rwl" | "json" => FileRole::Sidecar,
         _ => FileRole::Unknown,
     }
+}
+
+/// Find the canonical basename for `stem` given every stem present in the
+/// folder. Returns the *shortest* stem `s'` in `all_stems` such that `stem`
+/// equals `s'_<suffix>` — making `DSC_0123_edit` collapse to `DSC_0123` when
+/// both exist, while leaving `DSC_0123` (which has no shorter parent) alone.
+fn canonical_basename<'a>(all_stems: &'a BTreeSet<String>, stem: &'a str) -> &'a str {
+    let mut best: Option<&str> = None;
+    for s in all_stems.iter() {
+        if s.len() >= stem.len() {
+            continue;
+        }
+        if !stem.starts_with(s.as_str()) {
+            continue;
+        }
+        // Must be followed by an underscore so DSC_0123 doesn't sweep up
+        // DSC_01230_x — the boundary marker is what makes this a *variant*
+        // and not a happens-to-share-prefix coincidence.
+        if stem.as_bytes().get(s.len()) != Some(&b'_') {
+            continue;
+        }
+        match best {
+            None => best = Some(s),
+            Some(prev) if s.len() < prev.len() => best = Some(s),
+            _ => {}
+        }
+    }
+    best.unwrap_or(stem)
 }
 
 fn systemtime_to_iso(t: SystemTime) -> String {
@@ -63,12 +98,23 @@ pub fn scan_folder(folder: &Path, force_rescan: bool) -> AppResult<FolderIndex> 
     Ok(index)
 }
 
+struct ScannedFile {
+    file_name: String,
+    stem: String,
+    ext: String,
+    size: u64,
+    mtime: String,
+}
+
 fn walk_folder(
     folder: &Path,
     folder_mtime: String,
     prior: Option<&FolderIndex>,
 ) -> AppResult<FolderIndex> {
-    let mut groups: BTreeMap<String, Vec<BundleFile>> = BTreeMap::new();
+    // Pass 1: collect every includable file. We need the full set of stems
+    // before we can decide which stems are canonical and which are variants.
+    let mut entries: Vec<ScannedFile> = Vec::new();
+    let mut all_stems: BTreeSet<String> = BTreeSet::new();
 
     for entry in fs::read_dir(folder)? {
         let entry = entry?;
@@ -93,20 +139,43 @@ fn walk_folder(
             None => continue,
         };
 
-        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-        let role = classify_extension(ext);
+        let ext = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
 
         let mtime = metadata
             .modified()
             .map(systemtime_to_iso)
             .unwrap_or_default();
 
-        groups.entry(stem).or_default().push(BundleFile {
-            role,
-            path: file_name,
+        all_stems.insert(stem.clone());
+        entries.push(ScannedFile {
+            file_name,
+            stem,
+            ext,
             size: metadata.len(),
             mtime,
         });
+    }
+
+    // Pass 2: route each file to its canonical bundle and classify its role
+    // in light of whether it's the canonical or a variant.
+    let mut groups: BTreeMap<String, Vec<BundleFile>> = BTreeMap::new();
+    for e in entries {
+        let canonical = canonical_basename(&all_stems, &e.stem);
+        let is_variant = canonical != e.stem;
+        let role = classify_extension(&e.ext, is_variant);
+        groups
+            .entry(canonical.to_string())
+            .or_default()
+            .push(BundleFile {
+                role,
+                path: e.file_name,
+                size: e.size,
+                mtime: e.mtime,
+            });
     }
 
     // Reuse bundle_ids from prior cache when basename still exists.
@@ -186,11 +255,12 @@ fn collect_post_info(sidecar: Option<&BundleSidecar>) -> (bool, Vec<String>, boo
 }
 
 fn role_sort_key(role: FileRole) -> u8 {
+    // Lifecycle order: capture → develop → metadata → other.
     match role {
         FileRole::Raw => 0,
         FileRole::Jpeg => 1,
-        FileRole::Sidecar => 2,
-        FileRole::Developed => 3,
+        FileRole::Developed => 2,
+        FileRole::Sidecar => 3,
         FileRole::Unknown => 4,
     }
 }
@@ -244,6 +314,94 @@ mod tests {
         assert_eq!(idx.bundles.len(), 1);
         assert_eq!(idx.bundles[0].base_name, "DSC_0123");
         assert_eq!(idx.bundles[0].files.len(), 1);
+    }
+
+    #[test]
+    fn variant_jpgs_are_grouped_under_canonical_and_classified_developed() {
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0123.DNG", b"raw");
+        touch(&tmp, "DSC_0123.JPG", b"in-camera");
+        touch(&tmp, "DSC_0123_edit.JPG", b"variant1");
+        touch(&tmp, "DSC_0123_bw.JPG", b"variant2");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 1);
+        let b = &idx.bundles[0];
+        assert_eq!(b.base_name, "DSC_0123");
+        assert_eq!(b.files.len(), 4);
+
+        let developed: Vec<_> = b
+            .files
+            .iter()
+            .filter(|f| f.role == FileRole::Developed)
+            .collect();
+        assert_eq!(developed.len(), 2);
+
+        let in_camera: Vec<_> =
+            b.files.iter().filter(|f| f.role == FileRole::Jpeg).collect();
+        assert_eq!(in_camera.len(), 1);
+        assert_eq!(in_camera[0].path, "DSC_0123.JPG");
+    }
+
+    #[test]
+    fn variant_requires_underscore_separator_to_avoid_false_match() {
+        // DSC_01230 starts with "DSC_0123" string-wise but the next char isn't
+        // an underscore — it's its own bundle, not a variant of DSC_0123.
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0123.JPG", b"a");
+        touch(&tmp, "DSC_01230.JPG", b"b");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 2);
+    }
+
+    #[test]
+    fn standalone_variant_becomes_its_own_canonical() {
+        // No DSC_0123.* exists, so DSC_0123_edit has no shorter parent and
+        // becomes its own canonical — in-camera Jpeg, not Developed.
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0123_edit.JPG", b"x");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 1);
+        assert_eq!(idx.bundles[0].base_name, "DSC_0123_edit");
+        assert_eq!(idx.bundles[0].files[0].role, FileRole::Jpeg);
+    }
+
+    #[test]
+    fn json_files_are_classified_as_sidecars_for_raw_dev_apps() {
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0500.DNG", b"raw");
+        touch(&tmp, "DSC_0500.json", b"{\"k\":1}");
+        touch(&tmp, "DSC_0500_edit.JPG", b"developed");
+        touch(&tmp, "DSC_0500_edit.json", b"{\"k\":2}");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 1);
+        let sidecars: Vec<_> = idx.bundles[0]
+            .files
+            .iter()
+            .filter(|f| f.role == FileRole::Sidecar)
+            .collect();
+        assert_eq!(sidecars.len(), 2);
+        assert!(sidecars.iter().any(|f| f.path == "DSC_0500.json"));
+        assert!(sidecars.iter().any(|f| f.path == "DSC_0500_edit.json"));
+    }
+
+    #[test]
+    fn nested_variants_collapse_to_shortest_canonical() {
+        // DSC_0001_a_b should bundle under DSC_0001, not DSC_0001_a, even
+        // though DSC_0001_a also exists. "Shortest matching canonical" is the
+        // anchor; we don't want one variant to absorb deeper variants.
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0001.JPG", b"a");
+        touch(&tmp, "DSC_0001_a.JPG", b"b");
+        touch(&tmp, "DSC_0001_a_b.JPG", b"c");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 1);
+        assert_eq!(idx.bundles[0].base_name, "DSC_0001");
+        assert_eq!(idx.bundles[0].files.len(), 3);
     }
 
     #[test]
