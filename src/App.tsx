@@ -15,7 +15,13 @@ import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
 import { joinPath } from "./utils/path";
 import { rangeIds } from "./utils/selection";
-import { applyFilter, FILTER_LABELS, FILTER_MODES, type FilterMode } from "./utils/filter";
+import {
+  applyFilter,
+  distinctTags,
+  FILTER_LABELS,
+  FILTER_MODES,
+  type FilterMode,
+} from "./utils/filter";
 import "./App.css";
 
 const TILE_SIZES = { S: 128, M: 200, L: 320 } as const;
@@ -50,6 +56,7 @@ function App() {
   const [addingPost, setAddingPost] = useState(false);
 
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
+  const [filterTag, setFilterTag] = useState<string | null>(null);
 
   const [appSettings, setAppSettings] = useState<AppSettings>({});
   const [showSettings, setShowSettings] = useState(false);
@@ -170,9 +177,22 @@ function App() {
   // this slice — the underlying index.bundles is the source of truth and
   // should rarely be referenced directly outside of file-op handlers.
   const filteredBundles = useMemo(
-    () => (index ? applyFilter(index.bundles, filterMode) : []),
-    [index, filterMode],
+    () => (index ? applyFilter(index.bundles, filterMode, filterTag) : []),
+    [index, filterMode, filterTag],
   );
+
+  const availableTags = useMemo(
+    () => (index ? distinctTags(index.bundles) : []),
+    [index],
+  );
+
+  // If the user removes the last bundle bearing the active tag filter,
+  // collapse back to no-tag-filter so the grid doesn't go empty silently.
+  useEffect(() => {
+    if (filterTag && !availableTags.includes(filterTag)) {
+      setFilterTag(null);
+    }
+  }, [availableTags, filterTag]);
 
   // Prune selection / anchor / active when the visible set changes — either
   // because a Re-scan dropped a bundle, or the user changed the filter.
@@ -298,7 +318,7 @@ function App() {
         // "Next" should be a still-visible neighbour, not just the next bundle
         // in the unfiltered list — otherwise deleting a pick while the Pick
         // filter is on jumps to a bundle that's invisible.
-        const visibleBefore = applyFilter(prev.bundles, filterMode);
+        const visibleBefore = applyFilter(prev.bundles, filterMode, filterTag);
         const removedVisibleIndices = visibleBefore
           .map((b, i) => (removedIds.has(b.bundle_id) ? i : -1))
           .filter((i) => i >= 0);
@@ -310,7 +330,7 @@ function App() {
         const remaining = prev.bundles.filter(
           (b) => !removedIds.has(b.bundle_id),
         );
-        const visibleAfter = applyFilter(remaining, filterMode);
+        const visibleAfter = applyFilter(remaining, filterMode, filterTag);
 
         if (visibleAfter.length === 0) {
           resetSelection();
@@ -324,7 +344,7 @@ function App() {
         return { ...prev, bundles: remaining };
       });
     },
-    [filterMode],
+    [filterMode, filterTag],
   );
 
   const collectSelectedFiles = useCallback((): {
@@ -886,6 +906,26 @@ function App() {
               {FILTER_LABELS[m]}
             </button>
           ))}
+          {availableTags.length > 0 && (
+            <>
+              <span className="filter-sep" aria-hidden="true">
+                ·
+              </span>
+              <span className="filter-label">Tag</span>
+              <select
+                className="filter-tag-select"
+                value={filterTag ?? ""}
+                onChange={(e) => setFilterTag(e.target.value || null)}
+              >
+                <option value="">Any</option>
+                {availableTags.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
       )}
 

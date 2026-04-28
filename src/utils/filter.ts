@@ -32,12 +32,13 @@ export const FILTER_MODES: FilterMode[] = [
 export function applyFilter(
   bundles: BundleSummary[],
   mode: FilterMode,
+  tag: string | null = null,
 ): BundleSummary[] {
-  if (mode === "all") return bundles;
-  return bundles.filter((b) => match(b, mode));
+  if (mode === "all" && !tag) return bundles;
+  return bundles.filter((b) => matchMode(b, mode) && matchTag(b, tag));
 }
 
-function match(b: BundleSummary, mode: FilterMode): boolean {
+function matchMode(b: BundleSummary, mode: FilterMode): boolean {
   switch (mode) {
     case "all":
       return true;
@@ -55,4 +56,20 @@ function match(b: BundleSummary, mode: FilterMode): boolean {
     case "noposts":
       return !b.has_posts;
   }
+}
+
+function matchTag(b: BundleSummary, tag: string | null): boolean {
+  if (!tag) return true;
+  return (b.tags ?? []).includes(tag);
+}
+
+/// Distinct tags across the given bundles, sorted alphabetically. Drives
+/// the filter dropdown — no point offering a tag the user hasn't applied
+/// yet in this folder.
+export function distinctTags(bundles: BundleSummary[]): string[] {
+  const seen = new Set<string>();
+  for (const b of bundles) {
+    for (const t of b.tags ?? []) seen.add(t);
+  }
+  return Array.from(seen).sort();
 }

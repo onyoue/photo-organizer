@@ -285,6 +285,27 @@ html,
   border-color: #396cd8;
 }
 
+.filter-sep {
+  color: #aaa;
+  margin: 0 4px;
+}
+
+.filter-tag-select {
+  padding: 3px 8px;
+  font-size: 12px;
+  border: 1px solid #c0c0c0;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1a1a1a;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.filter-tag-select:focus {
+  outline: none;
+  border-color: #396cd8;
+}
+
 /* ---------- Errors / empty ---------- */
 .error {
   display: flex;
@@ -1210,6 +1231,11 @@ html,
     background: #396cd8;
     color: #ffffff;
     border-color: #396cd8;
+  }
+  .filter-tag-select {
+    background: #2a2a2a;
+    color: #e8e8e8;
+    border-color: #4a4a4a;
   }
   .star {
     color: #555;

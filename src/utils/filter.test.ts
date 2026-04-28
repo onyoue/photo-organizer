@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BundleSummary } from "../types/bundle";
-import { applyFilter } from "./filter";
+import { applyFilter, distinctTags } from "./filter";
 
 let id = 0;
 function bundle(overrides: Partial<BundleSummary> = {}): BundleSummary {
@@ -77,5 +77,46 @@ describe("applyFilter", () => {
       "B",
       "C",
     ]);
+  });
+
+  it("filters by tag when given", () => {
+    const bs = [
+      bundle({ tags: ["model:saki", "shibuya"] }),
+      bundle({ tags: ["model:rin"] }),
+      bundle(),
+    ];
+    expect(applyFilter(bs, "all", "shibuya")).toHaveLength(1);
+    expect(applyFilter(bs, "all", "model:rin")).toHaveLength(1);
+    expect(applyFilter(bs, "all", "missing")).toHaveLength(0);
+  });
+
+  it("composes mode and tag filters", () => {
+    const bs = [
+      bundle({ flag: "pick", tags: ["shibuya"] }),
+      bundle({ flag: "pick", tags: ["other"] }),
+      bundle({ flag: "reject", tags: ["shibuya"] }),
+    ];
+    // pick + shibuya → only the first bundle
+    expect(applyFilter(bs, "pick", "shibuya")).toHaveLength(1);
+  });
+
+  it("treats null tag as no tag filter", () => {
+    const bs = [bundle({ tags: ["a"] }), bundle()];
+    expect(applyFilter(bs, "all", null)).toHaveLength(2);
+  });
+});
+
+describe("distinctTags", () => {
+  it("returns sorted unique tags across all bundles", () => {
+    const bs = [
+      bundle({ tags: ["b", "a"] }),
+      bundle({ tags: ["c", "a"] }),
+      bundle(),
+    ];
+    expect(distinctTags(bs)).toEqual(["a", "b", "c"]);
+  });
+
+  it("returns empty array when no tags anywhere", () => {
+    expect(distinctTags([bundle(), bundle()])).toEqual([]);
   });
 });
