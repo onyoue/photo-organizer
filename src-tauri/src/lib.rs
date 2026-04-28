@@ -21,6 +21,9 @@ pub fn run() {
             commands::sidecar::set_bundle_rating,
             commands::sidecar::set_bundle_flag,
             commands::sidecar::set_bundle_tags,
+            commands::settings::get_app_settings,
+            commands::settings::save_app_settings,
+            commands::settings::open_with_raw_developer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

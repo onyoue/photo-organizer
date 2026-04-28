@@ -7,7 +7,9 @@ import type { BundleRef, BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
 import type { BundleSidecar, Flag, PostRecord } from "./types/sidecar";
+import type { AppSettings } from "./types/settings";
 import { generatePostId } from "./components/PostsSection";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
@@ -48,6 +50,20 @@ function App() {
   const [addingPost, setAddingPost] = useState(false);
 
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
+
+  const [appSettings, setAppSettings] = useState<AppSettings>({});
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Load app-wide settings on mount.
+  useEffect(() => {
+    void invoke<AppSettings>("get_app_settings").then((s) => setAppSettings(s));
+  }, []);
+
+  const saveSettings = useCallback(async (next: AppSettings) => {
+    await invoke("save_app_settings", { settings: next });
+    setAppSettings(next);
+    setShowSettings(false);
+  }, []);
 
   function resetSelection() {
     setActiveId(null);
@@ -589,10 +605,15 @@ function App() {
         ? activeBundle.files.find((f) => f.role === role)
         : activeBundle.files[0];
       if (!file) return;
+      const path = joinPath(index.folder_path, file.path);
       try {
-        await invoke("open_path", {
-          path: joinPath(index.folder_path, file.path),
-        });
+        if (role === "raw") {
+          // Routes through the configured custom RAW developer when set,
+          // falling back to the OS default in the backend when not.
+          await invoke("open_with_raw_developer", { paths: [path] });
+        } else {
+          await invoke("open_path", { path });
+        }
       } catch (e: unknown) {
         setError(toMessage(e));
       }
@@ -758,7 +779,24 @@ function App() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="topbar-icon"
+          onClick={() => setShowSettings(true)}
+          title="Settings"
+        >
+          ⚙
+        </button>
       </header>
+
+      {showSettings && (
+        <SettingsDialog
+          initial={appSettings}
+          onSave={saveSettings}
+          onClose={() => setShowSettings(false)}
+          busy={false}
+        />
+      )}
 
       {error && (
         <div className="error">

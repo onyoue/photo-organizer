@@ -104,6 +104,146 @@ html,
   color: #ffffff;
 }
 
+.topbar-icon {
+  padding: 4px 10px;
+  font-size: 14px;
+  border: 1px solid #c0c0c0;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+
+.topbar-icon:hover {
+  border-color: #396cd8;
+}
+
+/* ---------- Settings dialog ---------- */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.settings-dialog {
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  width: 480px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.settings-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.settings-close {
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: #666;
+  padding: 0 4px;
+}
+
+.settings-body {
+  padding: 16px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+}
+
+.settings-row {
+  display: flex;
+  gap: 6px;
+}
+
+.settings-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.settings-row button {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.settings-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #888;
+}
+
+.settings-error {
+  padding: 8px 16px;
+  background: #fde7e7;
+  color: #a01515;
+  font-size: 12px;
+  border-top: 1px solid #f0c0c0;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.settings-actions button {
+  padding: 6px 16px;
+  font-size: 13px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.settings-actions button.primary {
+  background: #396cd8;
+  color: #ffffff;
+  border-color: #396cd8;
+}
+
+.settings-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---------- Filter bar ---------- */
 .filter-bar {
   display: flex;
@@ -965,6 +1105,7 @@ html,
     border-left-color: #3a3a3a;
   }
   .topbar > button,
+  .topbar-icon,
   .size-selector button,
   .detail-actions button,
   .flag-btn,
@@ -972,6 +1113,32 @@ html,
     background: #2a2a2a;
     color: #e8e8e8;
     border-color: #4a4a4a;
+  }
+  .settings-dialog {
+    background: #2a2a2a;
+    color: #e8e8e8;
+  }
+  .settings-header,
+  .settings-actions {
+    border-color: #3a3a3a;
+  }
+  .settings-row input,
+  .settings-row button,
+  .settings-actions button {
+    background: #1f1f1f;
+    color: #e8e8e8;
+    border-color: #4a4a4a;
+  }
+  .settings-actions button.primary {
+    background: #396cd8;
+    color: #ffffff;
+    border-color: #396cd8;
+  }
+  .settings-field label {
+    color: #c0c0c0;
+  }
+  .settings-hint {
+    color: #888;
   }
   .filter-bar {
     background: #232323;
