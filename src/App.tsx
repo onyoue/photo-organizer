@@ -635,25 +635,48 @@ function App() {
 
   const openActive = useCallback(
     async (role: "raw" | "jpeg" | null) => {
-      if (!activeBundle || !index) return;
+      if (!index) return;
+
+      if (role === "raw") {
+        // Collect every selected bundle's RAW. The custom developer the user
+        // is building is expected to accept multi-file invocation, so this
+        // is the natural way to feed it a session of picks at once. Falls
+        // back to a single bundle when nothing is selected (active only).
+        const targets =
+          selectedIds.size > 0
+            ? index.bundles.filter((b) => selectedIds.has(b.bundle_id))
+            : activeBundle
+              ? [activeBundle]
+              : [];
+        const paths: string[] = [];
+        for (const b of targets) {
+          const raw = b.files.find((f) => f.role === "raw");
+          if (raw) paths.push(joinPath(index.folder_path, raw.path));
+        }
+        if (paths.length === 0) return;
+        try {
+          await invoke("open_with_raw_developer", { paths });
+        } catch (e: unknown) {
+          setError(toMessage(e));
+        }
+        return;
+      }
+
+      // Non-RAW (JPG / unspecified) stays single-target — opening dozens of
+      // files through the OS default handler floods the desktop with viewers.
+      if (!activeBundle) return;
       const file = role
         ? activeBundle.files.find((f) => f.role === role)
         : activeBundle.files[0];
       if (!file) return;
       const path = joinPath(index.folder_path, file.path);
       try {
-        if (role === "raw") {
-          // Routes through the configured custom RAW developer when set,
-          // falling back to the OS default in the backend when not.
-          await invoke("open_with_raw_developer", { paths: [path] });
-        } else {
-          await invoke("open_path", { path });
-        }
+        await invoke("open_path", { path });
       } catch (e: unknown) {
         setError(toMessage(e));
       }
     },
-    [activeBundle, index],
+    [activeBundle, index, selectedIds],
   );
 
   const selectAll = useCallback(() => {

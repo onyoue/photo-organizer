@@ -59,6 +59,7 @@ export function DetailPanel({
   const hasRaw = bundle.files.some((f) => f.role === "raw");
   const hasJpeg = bundle.files.some((f) => f.role === "jpeg");
   const multi = selectedCount > 1;
+  const rawSuffix = multi ? ` (up to ${selectedCount})` : "";
 
   return (
     <div className="detail-panel">
@@ -94,9 +95,13 @@ export function DetailPanel({
           type="button"
           onClick={() => onOpen("raw")}
           disabled={busy || !hasRaw}
-          title="Open active bundle's RAW in default app"
+          title={
+            multi
+              ? `Open every selected bundle's RAW in the configured developer (up to ${selectedCount})`
+              : "Open RAW in the configured developer"
+          }
         >
-          Open RAW
+          Open RAW{rawSuffix}
         </button>
       </div>
 
