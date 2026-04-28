@@ -131,6 +131,12 @@ fn walk_folder(
             // A corrupt sidecar shouldn't break a folder scan — treat as no posts.
             let sidecar = sidecar_io::read(folder, &base_name).ok().flatten();
             let (has_posts, post_platforms, has_model_post) = collect_post_info(sidecar.as_ref());
+            let rating = sidecar.as_ref().and_then(|s| s.rating);
+            let flag = sidecar.as_ref().and_then(|s| s.flag);
+            let tags = sidecar
+                .as_ref()
+                .map(|s| s.tags.clone())
+                .unwrap_or_default();
 
             BundleSummary {
                 bundle_id,
@@ -139,6 +145,9 @@ fn walk_folder(
                 has_posts,
                 post_platforms,
                 has_model_post,
+                rating,
+                flag,
+                tags,
             }
         })
         .collect();
@@ -235,6 +244,65 @@ mod tests {
         assert_eq!(idx.bundles.len(), 1);
         assert_eq!(idx.bundles[0].base_name, "DSC_0123");
         assert_eq!(idx.bundles[0].files.len(), 1);
+    }
+
+    #[test]
+    fn reads_rating_flag_tags_from_sidecar() {
+        use crate::core::sidecar::SIDECAR_VERSION;
+        use crate::models::sidecar::{BundleSidecar, Flag};
+
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_R1.JPG", b"jpg");
+        touch(&tmp, "DSC_R2.JPG", b"jpg");
+        touch(&tmp, "DSC_NONE.JPG", b"jpg");
+
+        sidecar_io::write(
+            &tmp,
+            &BundleSidecar {
+                version: SIDECAR_VERSION,
+                bundle_id: Ulid::new().to_string(),
+                base_name: "DSC_R1".into(),
+                rating: Some(5),
+                flag: Some(Flag::Pick),
+                tags: vec!["model:saki".into(), "shibuya".into()],
+                posts: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+            },
+        )
+        .unwrap();
+        sidecar_io::write(
+            &tmp,
+            &BundleSidecar {
+                version: SIDECAR_VERSION,
+                bundle_id: Ulid::new().to_string(),
+                base_name: "DSC_R2".into(),
+                rating: None,
+                flag: Some(Flag::Reject),
+                tags: vec![],
+                posts: vec![],
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+            },
+        )
+        .unwrap();
+
+        let idx = scan_folder(&tmp, false).unwrap();
+
+        let r1 = idx.bundles.iter().find(|b| b.base_name == "DSC_R1").unwrap();
+        assert_eq!(r1.rating, Some(5));
+        assert_eq!(r1.flag, Some(Flag::Pick));
+        assert_eq!(r1.tags, vec!["model:saki", "shibuya"]);
+
+        let r2 = idx.bundles.iter().find(|b| b.base_name == "DSC_R2").unwrap();
+        assert!(r2.rating.is_none());
+        assert_eq!(r2.flag, Some(Flag::Reject));
+        assert!(r2.tags.is_empty());
+
+        let none = idx.bundles.iter().find(|b| b.base_name == "DSC_NONE").unwrap();
+        assert!(none.rating.is_none());
+        assert!(none.flag.is_none());
+        assert!(none.tags.is_empty());
     }
 
     #[test]

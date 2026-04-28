@@ -3,10 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { BundleSummary, FolderIndex } from "./types/bundle";
+import type { BundleRef, BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
-import type { BundleSidecar, PostRecord } from "./types/sidecar";
+import type { BundleSidecar, Flag, PostRecord } from "./types/sidecar";
 import { generatePostId } from "./components/PostsSection";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
@@ -452,6 +452,104 @@ function App() {
     [activeSidecar, persistSidecar],
   );
 
+  // Build BundleRef[] for the current selection (used by rating/flag/tag commands).
+  const selectedBundleRefs = useCallback((): BundleRef[] => {
+    if (!index) return [];
+    const out: BundleRef[] = [];
+    for (const b of index.bundles) {
+      if (selectedIds.has(b.bundle_id)) {
+        out.push({ bundle_id: b.bundle_id, base_name: b.base_name });
+      }
+    }
+    return out;
+  }, [index, selectedIds]);
+
+  const setRatingForSelection = useCallback(
+    async (rating: number | null) => {
+      if (!index || selectedIds.size === 0 || busy) return;
+      const refs = selectedBundleRefs();
+      if (refs.length === 0) return;
+      try {
+        await invoke("set_bundle_rating", {
+          folder: index.folder_path,
+          bundles: refs,
+          rating,
+        });
+        // Sync in-memory BundleSummaries.
+        const ratingValue = rating ?? undefined;
+        setIndex((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            bundles: prev.bundles.map((b) =>
+              selectedIds.has(b.bundle_id) ? { ...b, rating: ratingValue } : b,
+            ),
+          };
+        });
+        // If the active bundle is among those updated, also patch its sidecar
+        // state so the DetailPanel stays in sync.
+        if (activeBundle && selectedIds.has(activeBundle.bundle_id)) {
+          setActiveSidecar((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  rating: ratingValue,
+                  updated_at: new Date().toISOString(),
+                }
+              : prev,
+          );
+        }
+      } catch (e: unknown) {
+        setError(toMessage(e));
+      }
+    },
+    [activeBundle, busy, index, selectedBundleRefs, selectedIds],
+  );
+
+  const toggleFlagForSelection = useCallback(
+    async (target: Flag) => {
+      if (!index || selectedIds.size === 0 || busy) return;
+      // Toggle decision pivots on the active bundle: if it's already flagged
+      // with `target`, we clear; otherwise we set everyone to `target`.
+      // Mirrors Lightroom's P/X behaviour.
+      const newFlag: Flag | null =
+        activeBundle?.flag === target ? null : target;
+      const refs = selectedBundleRefs();
+      if (refs.length === 0) return;
+      try {
+        await invoke("set_bundle_flag", {
+          folder: index.folder_path,
+          bundles: refs,
+          flag: newFlag,
+        });
+        const flagValue = newFlag ?? undefined;
+        setIndex((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            bundles: prev.bundles.map((b) =>
+              selectedIds.has(b.bundle_id) ? { ...b, flag: flagValue } : b,
+            ),
+          };
+        });
+        if (activeBundle && selectedIds.has(activeBundle.bundle_id)) {
+          setActiveSidecar((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  flag: flagValue,
+                  updated_at: new Date().toISOString(),
+                }
+              : prev,
+          );
+        }
+      } catch (e: unknown) {
+        setError(toMessage(e));
+      }
+    },
+    [activeBundle, busy, index, selectedBundleRefs, selectedIds],
+  );
+
   const handleOpenUrl = useCallback(async (url: string) => {
     try {
       await openUrl(url);
@@ -557,6 +655,28 @@ function App() {
             setAddingPost(true);
           }
           break;
+        case "0":
+          e.preventDefault();
+          void setRatingForSelection(null);
+          break;
+        case "1":
+        case "2":
+        case "3":
+        case "4":
+        case "5":
+          e.preventDefault();
+          void setRatingForSelection(parseInt(e.key, 10));
+          break;
+        case "p":
+        case "P":
+          e.preventDefault();
+          void toggleFlagForSelection("pick");
+          break;
+        case "x":
+        case "X":
+          e.preventDefault();
+          void toggleFlagForSelection("reject");
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -572,6 +692,8 @@ function App() {
     activeBundle,
     addingPost,
     busy,
+    setRatingForSelection,
+    toggleFlagForSelection,
   ]);
 
   const totalFiles = index?.bundles.reduce((n, b) => n + b.files.length, 0) ?? 0;
@@ -666,6 +788,8 @@ function App() {
               onSavePost={savePost}
               onDeletePost={deletePost}
               onOpenUrl={handleOpenUrl}
+              onSetRating={setRatingForSelection}
+              onToggleFlag={toggleFlagForSelection}
             />
           </aside>
         </div>
@@ -692,7 +816,8 @@ function App() {
           {focusMode && <span className="mode-tag focus">Focus</span>}
           {busy && <span className="mode-tag busy">Working…</span>}
           <span className="hints">
-            Click · Shift/Ctrl · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O · Enter
+            Click · Shift/Ctrl · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O ·
+            Enter · 0–5 · P/X
           </span>
         </footer>
       )}

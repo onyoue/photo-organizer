@@ -20,6 +20,9 @@ pub enum AppError {
 
     #[error("source and destination are the same")]
     SameSourceAndDestination,
+
+    #[error("invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 impl Serialize for AppError {

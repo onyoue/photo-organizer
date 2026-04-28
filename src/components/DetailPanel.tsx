@@ -1,5 +1,5 @@
 import type { BundleSummary } from "../types/bundle";
-import type { BundleSidecar, PostRecord } from "../types/sidecar";
+import type { BundleSidecar, Flag, PostRecord } from "../types/sidecar";
 import { formatSize } from "../utils/format";
 import { PostsSection } from "./PostsSection";
 
@@ -20,6 +20,9 @@ interface Props {
   onSavePost: (post: Omit<PostRecord, "id">) => void;
   onDeletePost: (id: string) => void;
   onOpenUrl: (url: string) => void;
+
+  onSetRating: (rating: number | null) => void;
+  onToggleFlag: (target: Flag) => void;
 }
 
 function suffix(n: number): string {
@@ -42,6 +45,8 @@ export function DetailPanel({
   onSavePost,
   onDeletePost,
   onOpenUrl,
+  onSetRating,
+  onToggleFlag,
 }: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
@@ -89,6 +94,55 @@ export function DetailPanel({
         >
           Open RAW
         </button>
+      </div>
+
+      <div className="rating-flag-row">
+        <div className="rating-stars" role="group" aria-label="Rating">
+          {[1, 2, 3, 4, 5].map((n) => {
+            const filled = (bundle.rating ?? 0) >= n;
+            return (
+              <button
+                type="button"
+                key={n}
+                className={`star${filled ? " filled" : ""}`}
+                onClick={() => onSetRating((bundle.rating ?? 0) === n ? null : n)}
+                disabled={busy}
+                title={`Rate ${n} — press ${n}`}
+              >
+                ★
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className="star-clear"
+            onClick={() => onSetRating(null)}
+            disabled={busy || bundle.rating === undefined}
+            title="Clear rating — press 0"
+          >
+            ×
+          </button>
+        </div>
+        <div className="flag-toggles" role="group" aria-label="Flag">
+          <button
+            type="button"
+            className={`flag-btn pick${bundle.flag === "pick" ? " active" : ""}`}
+            onClick={() => onToggleFlag("pick")}
+            disabled={busy}
+            title="Toggle pick — press P"
+          >
+            ✓ Pick
+          </button>
+          <button
+            type="button"
+            className={`flag-btn reject${bundle.flag === "reject" ? " active" : ""}`}
+            onClick={() => onToggleFlag("reject")}
+            disabled={busy}
+            title="Toggle reject — press X"
+          >
+            ✕ Reject
+          </button>
+        </div>
       </div>
 
       <ul className="detail-files">

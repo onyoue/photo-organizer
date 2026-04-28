@@ -51,6 +51,26 @@ function BundleTileImpl({ bundle, thumb, active, selected, size, onClick }: Prop
         {thumb.kind === "error" && <div className="tile-status err">!</div>}
         {thumb.kind === "none" && <div className="tile-status">—</div>}
 
+        {(bundle.flag || bundle.rating) && (
+          <div className="tile-flags">
+            {bundle.flag === "pick" && (
+              <span className="tile-flag pick" title="Pick">
+                ✓
+              </span>
+            )}
+            {bundle.flag === "reject" && (
+              <span className="tile-flag reject" title="Reject">
+                ✕
+              </span>
+            )}
+            {bundle.rating ? (
+              <span className="tile-rating" title={`${bundle.rating} stars`}>
+                {"★".repeat(bundle.rating)}
+              </span>
+            ) : null}
+          </div>
+        )}
+
         {(bundle.has_posts || bundle.has_model_post) && (
           <div className="tile-overlay">
             {bundle.post_platforms.map((p) => (

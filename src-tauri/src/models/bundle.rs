@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::sidecar::Flag;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum FileRole {
@@ -33,6 +35,15 @@ pub struct BundleSummary {
     /// photographer — rendered with a dashed visual cue (REQUIREMENTS F3.4).
     #[serde(default)]
     pub has_model_post: bool,
+    /// Sidecar-derived 1..=5 rating, None for unrated (REQUIREMENTS F4.1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rating: Option<u8>,
+    /// Sidecar-derived pick/reject flag (REQUIREMENTS F4.1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<Flag>,
+    /// Sidecar-derived freeform tags (REQUIREMENTS F4.2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

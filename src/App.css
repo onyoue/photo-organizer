@@ -266,6 +266,49 @@ html,
   box-sizing: border-box;
 }
 
+.tile-flags {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tile-flag {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.tile-flag.pick {
+  background: #2a8a2a;
+}
+
+.tile-flag.reject {
+  background: #c44444;
+}
+
+.tile-rating {
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffcc00;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: -1px;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  align-self: flex-start;
+}
+
 .tile-thumb img {
   width: 100%;
   height: 100%;
@@ -415,6 +458,91 @@ html,
 .detail-actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ---------- Rating + Flag row ---------- */
+.rating-flag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.rating-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.star {
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 3px;
+  cursor: pointer;
+  color: #d0d0d0;
+  transition: color 80ms ease;
+}
+
+.star.filled {
+  color: #ffb300;
+}
+
+.star:hover:not(:disabled) {
+  color: #ffcc00;
+}
+
+.star:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.star-clear {
+  border: 0;
+  background: transparent;
+  color: #888;
+  font-size: 14px;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+.star-clear:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.flag-toggles {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.flag-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.flag-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.flag-btn.pick.active {
+  background: #2a8a2a;
+  color: #ffffff;
+  border-color: #2a8a2a;
+}
+
+.flag-btn.reject.active {
+  background: #c44444;
+  color: #ffffff;
+  border-color: #c44444;
 }
 
 .detail-files {
@@ -797,10 +925,17 @@ html,
   }
   .topbar > button,
   .size-selector button,
-  .detail-actions button {
+  .detail-actions button,
+  .flag-btn {
     background: #2a2a2a;
     color: #e8e8e8;
     border-color: #4a4a4a;
+  }
+  .star {
+    color: #555;
+  }
+  .star.filled {
+    color: #ffb300;
   }
   .size-selector {
     border-color: #4a4a4a;

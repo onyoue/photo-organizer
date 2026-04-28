@@ -1,3 +1,5 @@
+import type { Flag } from "./sidecar";
+
 export type FileRole = "raw" | "jpeg" | "sidecar" | "developed" | "unknown";
 
 export interface BundleFile {
@@ -14,6 +16,14 @@ export interface BundleSummary {
   has_posts: boolean;
   post_platforms: string[];
   has_model_post: boolean;
+  rating?: number;
+  flag?: Flag;
+  tags?: string[];
+}
+
+export interface BundleRef {
+  bundle_id: string;
+  base_name: string;
 }
 
 export interface FolderIndex {
