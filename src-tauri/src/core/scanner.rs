@@ -33,8 +33,13 @@ fn classify_extension(ext: &str, is_variant: bool) -> FileRole {
 
 /// Find the canonical basename for `stem` given every stem present in the
 /// folder. Returns the *shortest* stem `s'` in `all_stems` such that `stem`
-/// equals `s'_<suffix>` — making `DSC_0123_edit` collapse to `DSC_0123` when
-/// both exist, while leaving `DSC_0123` (which has no shorter parent) alone.
+/// equals `s'<sep><suffix>`, where `<sep>` is either `_` or `.`.
+///
+/// `_` covers in-app derivatives (DSC_0123_edit). `.` covers the
+/// double-extension pattern RAW developer apps use for per-file metadata
+/// (DSC_0123.DNG.rawdev.json gives a stem of `DSC_0123.DNG.rawdev`, which
+/// must collapse back to `DSC_0123`). DSC_0123 itself has no shorter parent
+/// and stays canonical.
 fn canonical_basename<'a>(all_stems: &'a BTreeSet<String>, stem: &'a str) -> &'a str {
     let mut best: Option<&str> = None;
     for s in all_stems.iter() {
@@ -44,11 +49,12 @@ fn canonical_basename<'a>(all_stems: &'a BTreeSet<String>, stem: &'a str) -> &'a
         if !stem.starts_with(s.as_str()) {
             continue;
         }
-        // Must be followed by an underscore so DSC_0123 doesn't sweep up
-        // DSC_01230_x — the boundary marker is what makes this a *variant*
-        // and not a happens-to-share-prefix coincidence.
-        if stem.as_bytes().get(s.len()) != Some(&b'_') {
-            continue;
+        // Boundary must be either `_` or `.` — without it DSC_0123 would
+        // sweep up DSC_01230_x (extra digit) or any happens-to-share-prefix
+        // file. The boundary character is what marks this as a true variant.
+        match stem.as_bytes().get(s.len()).copied() {
+            Some(b'_') | Some(b'.') => {}
+            _ => continue,
         }
         match best {
             None => best = Some(s),
@@ -386,6 +392,37 @@ mod tests {
         assert_eq!(sidecars.len(), 2);
         assert!(sidecars.iter().any(|f| f.path == "DSC_0500.json"));
         assert!(sidecars.iter().any(|f| f.path == "DSC_0500_edit.json"));
+    }
+
+    #[test]
+    fn raw_dev_sidecars_with_double_extension_attach_to_canonical() {
+        // RAW developer apps name their per-file metadata
+        // <base>.<original-ext>.<dev>.json, with `.` between the canonical
+        // stem and the dev-specific suffix. That format is what the user's
+        // own RAW developer produces.
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0123.DNG", b"raw");
+        touch(&tmp, "DSC_0123.JPG", b"in-camera");
+        touch(&tmp, "DSC_0123.DNG.rawdev.json", b"{}");
+        touch(&tmp, "DSC_0123_edit.JPG", b"developed");
+        touch(&tmp, "DSC_0123_edit.JPG.rawdev.json", b"{}");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 1);
+        let b = &idx.bundles[0];
+        assert_eq!(b.base_name, "DSC_0123");
+        assert_eq!(b.files.len(), 5);
+
+        let sidecars: Vec<_> = b
+            .files
+            .iter()
+            .filter(|f| f.role == FileRole::Sidecar)
+            .collect();
+        assert_eq!(sidecars.len(), 2);
+        assert!(sidecars.iter().any(|f| f.path == "DSC_0123.DNG.rawdev.json"));
+        assert!(sidecars
+            .iter()
+            .any(|f| f.path == "DSC_0123_edit.JPG.rawdev.json"));
     }
 
     #[test]
