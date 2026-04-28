@@ -18,13 +18,13 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "← / →", description: "Prev / next bundle" },
       { keys: "Shift + ← / →", description: "Extend selection" },
       { keys: "Ctrl/Cmd + A", description: "Select all (visible)" },
-      { keys: "Esc", description: "Collapse to active" },
+      { keys: "Esc", description: "Exit fullscreen / collapse to active" },
     ],
   },
   {
     title: "View",
     items: [
-      { keys: "Space", description: "Focus mode (grid ↔ preview)" },
+      { keys: "Space", description: "Toggle fullscreen photo (no chrome)" },
       { keys: "F", description: "Fit ↔ 100% preview" },
       { keys: "F1", description: "Hold for this cheatsheet" },
     ],

@@ -459,13 +459,59 @@ html,
   min-width: 0;
 }
 
-.workspace.focus .grid-area {
+/* Fullscreen mode: hide all chrome — topbar, filter bar, statusbar, the
+   grid, and the detail panel. Just the preview pane fills the viewport.
+   A small floating status overlay (.fullscreen-status) keeps the user
+   oriented; everything else is reachable via keyboard. */
+.app.fullscreen .topbar,
+.app.fullscreen .filter-bar,
+.app.fullscreen .statusbar,
+.app.fullscreen .grid-area,
+.app.fullscreen .detail-panel {
   display: none;
 }
 
-.workspace.focus .sidebar {
+.app.fullscreen .sidebar {
   flex: 1;
   border-left: none;
+}
+
+.fullscreen-status {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 50;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+.fs-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+}
+
+.fs-pos {
+  color: #b0b0b0;
+}
+
+.fs-hint {
+  color: #888;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fullscreen-status .mode-tag {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
 }
 
 /* ---------- Grid ---------- */

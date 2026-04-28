@@ -49,7 +49,7 @@ function App() {
 
   const [tileLabel, setTileLabel] = useState<TileLabel>("M");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("fit");
-  const [focusMode, setFocusMode] = useState(false);
+  const [fullscreenMode, setFullscreenMode] = useState(false);
   const [pixelOffset, setPixelOffset] = useState<PixelOffset>({ dx: 0, dy: 0 });
 
   const [activeSidecar, setActiveSidecar] = useState<BundleSidecar | null>(null);
@@ -802,7 +802,7 @@ function App() {
       switch (e.key) {
         case " ":
           e.preventDefault();
-          setFocusMode((m) => !m);
+          setFullscreenMode((m) => !m);
           break;
         case "f":
         case "F":
@@ -819,7 +819,13 @@ function App() {
           break;
         case "Escape":
           e.preventDefault();
-          collapseToActive();
+          // Exit fullscreen first (the more disruptive state); only collapse
+          // selection on a second press.
+          if (fullscreenMode) {
+            setFullscreenMode(false);
+          } else {
+            collapseToActive();
+          }
           break;
         case "Delete":
           e.preventDefault();
@@ -883,6 +889,7 @@ function App() {
     activeBundle,
     addingPost,
     busy,
+    fullscreenMode,
     setRatingForSelection,
     toggleFlagForSelection,
   ]);
@@ -902,7 +909,7 @@ function App() {
   const pendingCount = Object.values(thumbs).filter((t) => t.kind === "loading").length;
 
   return (
-    <main className="app">
+    <main className={`app${fullscreenMode ? " fullscreen" : ""}`}>
       <header className="topbar">
         <button onClick={pickAndOpenFolder} disabled={loading}>
           {loading ? "Scanning..." : "Open Folder..."}
@@ -1010,7 +1017,7 @@ function App() {
       )}
 
       {index && index.bundles.length > 0 && (
-        <div className={`workspace${focusMode ? " focus" : ""}`}>
+        <div className="workspace">
           <div className="grid-area">
             {filteredBundles.length === 0 ? (
               <div className="empty">No bundles match the current filter.</div>
@@ -1079,13 +1086,25 @@ function App() {
           <span className={`mode-tag ${previewMode}`}>
             {previewMode === "fit" ? "Fit" : "100%"}
           </span>
-          {focusMode && <span className="mode-tag focus">Focus</span>}
           {busy && <span className="mode-tag busy">Working…</span>}
           <span className="hints">
             Click · Shift/Ctrl · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O ·
             Enter · 0–5 · P/X
           </span>
         </footer>
+      )}
+
+      {fullscreenMode && activeBundle && index && (
+        <div className="fullscreen-status">
+          <span className="fs-name">{activeBundle.base_name}</span>
+          <span className="fs-pos">
+            {activeIndex + 1}/{filteredBundles.length}
+          </span>
+          <span className={`mode-tag ${previewMode}`}>
+            {previewMode === "fit" ? "Fit" : "100%"}
+          </span>
+          <span className="fs-hint">Esc to exit</span>
+        </div>
       )}
     </main>
   );
