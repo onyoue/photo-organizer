@@ -395,6 +395,27 @@ mod tests {
     }
 
     #[test]
+    fn leica_style_basename_with_dotted_rawdev_sidecar() {
+        // Reproduces the user-reported case verbatim. Was getting two
+        // separate bundles because '.' wasn't a recognised boundary char.
+        let tmp = tempdir_for_test();
+        touch(&tmp, "L1340865.DNG", b"raw");
+        touch(&tmp, "L1340865.DNG.rawdev.json", b"{}");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(
+            idx.bundles.len(),
+            1,
+            "expected RAW + sidecar to share one bundle"
+        );
+        let b = &idx.bundles[0];
+        assert_eq!(b.base_name, "L1340865");
+        assert_eq!(b.files.len(), 2);
+        assert!(b.files.iter().any(|f| f.role == FileRole::Raw));
+        assert!(b.files.iter().any(|f| f.role == FileRole::Sidecar));
+    }
+
+    #[test]
     fn raw_dev_sidecars_with_double_extension_attach_to_canonical() {
         // RAW developer apps name their per-file metadata
         // <base>.<original-ext>.<dev>.json, with `.` between the canonical
