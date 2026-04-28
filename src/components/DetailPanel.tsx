@@ -4,12 +4,15 @@ import { formatSize } from "../utils/format";
 import { PostsSection } from "./PostsSection";
 import { TagsSection } from "./TagsSection";
 
+type OpScope = "all" | "developed";
+
 interface Props {
   bundle: BundleSummary | null;
   selectedCount: number;
+  selectedDevelopedCount: number;
   onDelete: () => void;
-  onMove: () => void;
-  onCopy: () => void;
+  onMove: (scope?: OpScope) => void;
+  onCopy: (scope?: OpScope) => void;
   onOpen: (role: "raw" | "jpeg" | null) => void;
   busy: boolean;
 
@@ -35,6 +38,7 @@ function suffix(n: number): string {
 export function DetailPanel({
   bundle,
   selectedCount,
+  selectedDevelopedCount,
   onDelete,
   onMove,
   onCopy,
@@ -60,6 +64,7 @@ export function DetailPanel({
   const hasJpeg = bundle.files.some((f) => f.role === "jpeg");
   const multi = selectedCount > 1;
   const rawSuffix = multi ? ` (up to ${selectedCount})` : "";
+  const devSuffix = selectedDevelopedCount > 0 ? ` (${selectedDevelopedCount})` : "";
 
   return (
     <div className="detail-panel">
@@ -77,11 +82,37 @@ export function DetailPanel({
         >
           Delete{suffix(selectedCount)}
         </button>
-        <button type="button" onClick={onMove} disabled={busy} title="Move to folder — M">
+        <button
+          type="button"
+          onClick={() => onMove("all")}
+          disabled={busy}
+          title="Move all selected bundle files to a folder — M"
+        >
           Move…{suffix(selectedCount)}
         </button>
-        <button type="button" onClick={onCopy} disabled={busy} title="Copy to folder — C">
+        <button
+          type="button"
+          onClick={() => onCopy("all")}
+          disabled={busy}
+          title="Copy all selected bundle files to a folder — C"
+        >
           Copy…{suffix(selectedCount)}
+        </button>
+        <button
+          type="button"
+          onClick={() => onMove("developed")}
+          disabled={busy || selectedDevelopedCount === 0}
+          title="Move only developed-variant JPGs out (e.g. into delivery/)"
+        >
+          Move dev{devSuffix}
+        </button>
+        <button
+          type="button"
+          onClick={() => onCopy("developed")}
+          disabled={busy || selectedDevelopedCount === 0}
+          title="Copy only developed-variant JPGs (typical for delivery upload)"
+        >
+          Copy dev{devSuffix}
         </button>
         <button
           type="button"

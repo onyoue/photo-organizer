@@ -7,7 +7,8 @@ export type FilterMode =
   | "unrated"
   | "rated4plus"
   | "hasposts"
-  | "noposts";
+  | "noposts"
+  | "hasdeveloped";
 
 export const FILTER_LABELS: Record<FilterMode, string> = {
   all: "All",
@@ -17,6 +18,7 @@ export const FILTER_LABELS: Record<FilterMode, string> = {
   rated4plus: "4★+",
   hasposts: "Posted",
   noposts: "Not posted",
+  hasdeveloped: "Developed",
 };
 
 export const FILTER_MODES: FilterMode[] = [
@@ -27,6 +29,7 @@ export const FILTER_MODES: FilterMode[] = [
   "rated4plus",
   "hasposts",
   "noposts",
+  "hasdeveloped",
 ];
 
 export function applyFilter(
@@ -55,6 +58,8 @@ function matchMode(b: BundleSummary, mode: FilterMode): boolean {
       return b.has_posts;
     case "noposts":
       return !b.has_posts;
+    case "hasdeveloped":
+      return b.files.some((f) => f.role === "developed");
   }
 }
 

@@ -377,20 +377,46 @@ function App() {
     [filterMode, filterTag],
   );
 
-  const collectSelectedFiles = useCallback((): {
-    folder: string;
-    files: string[];
-    ids: Set<string>;
-  } | null => {
-    if (!index || selectedIds.size === 0) return null;
-    const ids = new Set(selectedIds);
-    const files: string[] = [];
-    for (const b of index.bundles) {
-      if (!ids.has(b.bundle_id)) continue;
-      for (const f of b.files) files.push(f.path);
-    }
-    return { folder: index.folder_path, files, ids };
-  }, [index, selectedIds]);
+  type OpScope = "all" | "developed";
+
+  const collectSelectedFiles = useCallback(
+    (
+      scope: OpScope = "all",
+    ): { folder: string; files: string[]; ids: Set<string> } | null => {
+      if (!index || selectedIds.size === 0) return null;
+      const ids = new Set(selectedIds);
+      const files: string[] = [];
+      for (const b of index.bundles) {
+        if (!ids.has(b.bundle_id)) continue;
+        for (const f of b.files) {
+          if (scope === "developed" && f.role !== "developed") continue;
+          files.push(f.path);
+        }
+      }
+      return { folder: index.folder_path, files, ids };
+    },
+    [index, selectedIds],
+  );
+
+  // Drop the moved files from each affected bundle's files[] without
+  // removing the bundle itself — used for developed-only Move where the
+  // canonical RAW + in-camera JPG should remain in the source folder.
+  const detachFilesFromBundles = useCallback(
+    (bundleIds: ReadonlySet<string>, removedPaths: ReadonlySet<string>) => {
+      setIndex((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          bundles: prev.bundles.map((b) =>
+            bundleIds.has(b.bundle_id)
+              ? { ...b, files: b.files.filter((f) => !removedPaths.has(f.path)) }
+              : b,
+          ),
+        };
+      });
+    },
+    [],
+  );
 
   const deleteSelected = useCallback(async () => {
     if (busy) return;
@@ -423,64 +449,76 @@ function App() {
     }
   }, [busy, collectSelectedFiles, removeBundlesAndAdvance]);
 
-  const moveSelected = useCallback(async () => {
-    if (busy) return;
-    const job = collectSelectedFiles();
-    if (!job) return;
-    let dest: string | null;
-    try {
-      const picked = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: job.folder,
-      });
-      dest = typeof picked === "string" ? picked : null;
-    } catch (e: unknown) {
-      setError(toMessage(e));
-      return;
-    }
-    if (!dest) return;
+  const moveSelected = useCallback(
+    async (scope: OpScope = "all") => {
+      if (busy) return;
+      const job = collectSelectedFiles(scope);
+      if (!job || job.files.length === 0) return;
+      let dest: string | null;
+      try {
+        const picked = await open({
+          directory: true,
+          multiple: false,
+          defaultPath: job.folder,
+        });
+        dest = typeof picked === "string" ? picked : null;
+      } catch (e: unknown) {
+        setError(toMessage(e));
+        return;
+      }
+      if (!dest) return;
 
-    setBusy(true);
-    setError(null);
-    try {
-      await invoke("move_bundle", { folder: job.folder, files: job.files, dest });
-      removeBundlesAndAdvance(job.ids);
-    } catch (e: unknown) {
-      setError(toMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, collectSelectedFiles, removeBundlesAndAdvance]);
+      setBusy(true);
+      setError(null);
+      try {
+        await invoke("move_bundle", { folder: job.folder, files: job.files, dest });
+        if (scope === "developed") {
+          // Bundles stay in source — just drop the now-moved variants from
+          // each. Their canonical RAW + in-camera JPG remain.
+          detachFilesFromBundles(job.ids, new Set(job.files));
+        } else {
+          removeBundlesAndAdvance(job.ids);
+        }
+      } catch (e: unknown) {
+        setError(toMessage(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, collectSelectedFiles, detachFilesFromBundles, removeBundlesAndAdvance],
+  );
 
-  const copySelected = useCallback(async () => {
-    if (busy) return;
-    const job = collectSelectedFiles();
-    if (!job) return;
-    let dest: string | null;
-    try {
-      const picked = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: job.folder,
-      });
-      dest = typeof picked === "string" ? picked : null;
-    } catch (e: unknown) {
-      setError(toMessage(e));
-      return;
-    }
-    if (!dest) return;
+  const copySelected = useCallback(
+    async (scope: OpScope = "all") => {
+      if (busy) return;
+      const job = collectSelectedFiles(scope);
+      if (!job || job.files.length === 0) return;
+      let dest: string | null;
+      try {
+        const picked = await open({
+          directory: true,
+          multiple: false,
+          defaultPath: job.folder,
+        });
+        dest = typeof picked === "string" ? picked : null;
+      } catch (e: unknown) {
+        setError(toMessage(e));
+        return;
+      }
+      if (!dest) return;
 
-    setBusy(true);
-    setError(null);
-    try {
-      await invoke("copy_bundle", { folder: job.folder, files: job.files, dest });
-    } catch (e: unknown) {
-      setError(toMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, collectSelectedFiles]);
+      setBusy(true);
+      setError(null);
+      try {
+        await invoke("copy_bundle", { folder: job.folder, files: job.files, dest });
+      } catch (e: unknown) {
+        setError(toMessage(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, collectSelectedFiles],
+  );
 
   const persistSidecar = useCallback(
     async (next: BundleSidecar): Promise<boolean> => {
@@ -849,6 +887,16 @@ function App() {
     toggleFlagForSelection,
   ]);
 
+  const selectedDevelopedCount = useMemo(() => {
+    if (!index || selectedIds.size === 0) return 0;
+    let n = 0;
+    for (const b of index.bundles) {
+      if (!selectedIds.has(b.bundle_id)) continue;
+      n += b.files.filter((f) => f.role === "developed").length;
+    }
+    return n;
+  }, [index, selectedIds]);
+
   const totalFiles = index?.bundles.reduce((n, b) => n + b.files.length, 0) ?? 0;
   const readyCount = Object.values(thumbs).filter((t) => t.kind === "ready").length;
   const pendingCount = Object.values(thumbs).filter((t) => t.kind === "loading").length;
@@ -987,6 +1035,7 @@ function App() {
             <DetailPanel
               bundle={activeBundle}
               selectedCount={selectedIds.size}
+              selectedDevelopedCount={selectedDevelopedCount}
               busy={busy}
               onDelete={deleteSelected}
               onMove={moveSelected}

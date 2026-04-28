@@ -68,6 +68,22 @@ describe("applyFilter", () => {
     expect(applyFilter(bs, "noposts")).toHaveLength(1);
   });
 
+  it("filters by has-developed", () => {
+    const bs = [
+      bundle({
+        files: [
+          { role: "raw", path: "a.dng", size: 0, mtime: "" },
+          { role: "developed", path: "a_edit.jpg", size: 0, mtime: "" },
+        ],
+      }),
+      bundle({
+        files: [{ role: "jpeg", path: "b.jpg", size: 0, mtime: "" }],
+      }),
+      bundle(),
+    ];
+    expect(applyFilter(bs, "hasdeveloped")).toHaveLength(1);
+  });
+
   it("preserves order", () => {
     const a = bundle({ rating: 4, base_name: "A" });
     const b = bundle({ rating: 4, base_name: "B" });
