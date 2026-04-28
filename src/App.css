@@ -947,6 +947,65 @@ html,
   font-style: italic;
 }
 
+/* ---------- Tags ---------- */
+.tags-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 12px;
+  background: #e8eef8;
+  font-size: 11px;
+  color: #1a4d8c;
+}
+
+.tag-chip-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.tag-chip-x {
+  border: 0;
+  background: transparent;
+  color: #1a4d8c;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.tag-chip-x:hover:not(:disabled) {
+  color: #c44;
+}
+
+.tag-input {
+  flex: 1;
+  min-width: 100px;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  background: #ffffff;
+  font-family: inherit;
+}
+
+.tag-input:focus {
+  outline: none;
+  border-color: #396cd8;
+}
+
 /* ---------- Add post form ---------- */
 .post-form {
   display: flex;
@@ -1217,6 +1276,21 @@ html,
   }
   .post-url {
     color: #8ab4f8;
+  }
+  .tags-section {
+    border-top-color: #3a3a3a;
+  }
+  .tag-chip {
+    background: #2a3850;
+    color: #8ab4f8;
+  }
+  .tag-chip-x {
+    color: #8ab4f8;
+  }
+  .tag-input {
+    background: #1f1f1f;
+    color: #e8e8e8;
+    border-color: #4a4a4a;
   }
   .detail-panel {
     background: #232323;

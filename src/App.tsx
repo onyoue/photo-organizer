@@ -546,6 +546,41 @@ function App() {
     [activeBundle, busy, index, selectedBundleRefs, selectedIds],
   );
 
+  const setTagsForActive = useCallback(
+    async (tags: string[]) => {
+      if (!index || !activeBundle) return;
+      try {
+        await invoke("set_bundle_tags", {
+          folder: index.folder_path,
+          bundles: [
+            {
+              bundle_id: activeBundle.bundle_id,
+              base_name: activeBundle.base_name,
+            },
+          ],
+          tags,
+        });
+        setIndex((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            bundles: prev.bundles.map((b) =>
+              b.bundle_id === activeBundle.bundle_id ? { ...b, tags } : b,
+            ),
+          };
+        });
+        setActiveSidecar((prev) =>
+          prev
+            ? { ...prev, tags, updated_at: new Date().toISOString() }
+            : prev,
+        );
+      } catch (e: unknown) {
+        setError(toMessage(e));
+      }
+    },
+    [activeBundle, index],
+  );
+
   const toggleFlagForSelection = useCallback(
     async (target: Flag) => {
       if (!index || selectedIds.size === 0 || busy) return;
@@ -872,6 +907,7 @@ function App() {
               onOpenUrl={handleOpenUrl}
               onSetRating={setRatingForSelection}
               onToggleFlag={toggleFlagForSelection}
+              onSetTags={setTagsForActive}
             />
           </aside>
         </div>

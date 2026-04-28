@@ -2,6 +2,7 @@ import type { BundleSummary } from "../types/bundle";
 import type { BundleSidecar, Flag, PostRecord } from "../types/sidecar";
 import { formatSize } from "../utils/format";
 import { PostsSection } from "./PostsSection";
+import { TagsSection } from "./TagsSection";
 
 interface Props {
   bundle: BundleSummary | null;
@@ -23,6 +24,8 @@ interface Props {
 
   onSetRating: (rating: number | null) => void;
   onToggleFlag: (target: Flag) => void;
+
+  onSetTags: (tags: string[]) => void;
 }
 
 function suffix(n: number): string {
@@ -47,6 +50,7 @@ export function DetailPanel({
   onOpenUrl,
   onSetRating,
   onToggleFlag,
+  onSetTags,
 }: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
@@ -156,6 +160,12 @@ export function DetailPanel({
           </li>
         ))}
       </ul>
+
+      <TagsSection
+        tags={bundle.tags ?? []}
+        busy={busy}
+        onSetTags={onSetTags}
+      />
 
       <PostsSection
         sidecar={sidecar}
