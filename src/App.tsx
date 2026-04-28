@@ -13,6 +13,7 @@ import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
 import { joinPath } from "./utils/path";
 import { rangeIds } from "./utils/selection";
+import { applyFilter, FILTER_LABELS, FILTER_MODES, type FilterMode } from "./utils/filter";
 import "./App.css";
 
 const TILE_SIZES = { S: 128, M: 200, L: 320 } as const;
@@ -45,6 +46,8 @@ function App() {
   const [activeSidecar, setActiveSidecar] = useState<BundleSidecar | null>(null);
   const [sidecarLoading, setSidecarLoading] = useState(false);
   const [addingPost, setAddingPost] = useState(false);
+
+  const [filterMode, setFilterMode] = useState<FilterMode>("all");
 
   function resetSelection() {
     setActiveId(null);
@@ -92,19 +95,6 @@ function App() {
       setLoading(false);
     }
   }
-
-  // Prune any selection / anchor that points at bundles no longer in the index
-  // (e.g. after a Re-scan that picked up filesystem deletions made externally).
-  useEffect(() => {
-    if (!index) return;
-    const ids = new Set(index.bundles.map((b) => b.bundle_id));
-    setSelectedIds((prev) => {
-      const filtered = new Set([...prev].filter((id) => ids.has(id)));
-      return filtered.size === prev.size ? prev : filtered;
-    });
-    setActiveId((prev) => (prev && !ids.has(prev) ? null : prev));
-    setAnchorId((prev) => (prev && !ids.has(prev) ? null : prev));
-  }, [index]);
 
   useEffect(() => {
     if (!index) return;
@@ -160,16 +150,36 @@ function App() {
     };
   }, [index]);
 
+  // Filtered view of bundles. Navigation, selection, and the grid all use
+  // this slice — the underlying index.bundles is the source of truth and
+  // should rarely be referenced directly outside of file-op handlers.
+  const filteredBundles = useMemo(
+    () => (index ? applyFilter(index.bundles, filterMode) : []),
+    [index, filterMode],
+  );
+
+  // Prune selection / anchor / active when the visible set changes — either
+  // because a Re-scan dropped a bundle, or the user changed the filter.
+  useEffect(() => {
+    const ids = new Set(filteredBundles.map((b) => b.bundle_id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+    setActiveId((prev) => (prev && !ids.has(prev) ? null : prev));
+    setAnchorId((prev) => (prev && !ids.has(prev) ? null : prev));
+  }, [filteredBundles]);
+
   const activeBundle = useMemo(
     () => index?.bundles.find((b) => b.bundle_id === activeId) ?? null,
     [index, activeId],
   );
   const activeIndex = useMemo(
     () =>
-      index && activeId
-        ? index.bundles.findIndex((b) => b.bundle_id === activeId)
+      activeId
+        ? filteredBundles.findIndex((b) => b.bundle_id === activeId)
         : -1,
-    [index, activeId],
+    [filteredBundles, activeId],
   );
 
   const previewSrc = useMemo(() => {
@@ -241,51 +251,65 @@ function App() {
 
   const navigateBy = useCallback(
     (delta: number, extend: boolean) => {
-      if (!index || index.bundles.length === 0) return;
+      if (filteredBundles.length === 0) return;
       const cur = activeId
-        ? index.bundles.findIndex((b) => b.bundle_id === activeId)
+        ? filteredBundles.findIndex((b) => b.bundle_id === activeId)
         : -1;
       const nextIdx =
         cur < 0
           ? delta > 0
             ? 0
-            : index.bundles.length - 1
-          : Math.max(0, Math.min(index.bundles.length - 1, cur + delta));
-      const nextId = index.bundles[nextIdx].bundle_id;
+            : filteredBundles.length - 1
+          : Math.max(0, Math.min(filteredBundles.length - 1, cur + delta));
+      const nextId = filteredBundles[nextIdx].bundle_id;
 
       if (extend) {
         const a = anchorId ?? activeId ?? nextId;
         if (!anchorId) setAnchorId(a);
-        setSelectedIds(new Set(rangeIds(index.bundles, a, nextId)));
+        setSelectedIds(new Set(rangeIds(filteredBundles, a, nextId)));
         setActiveId(nextId);
       } else {
         selectSingle(nextId);
       }
     },
-    [activeId, anchorId, index],
+    [activeId, anchorId, filteredBundles],
   );
 
-  const removeBundlesAndAdvance = useCallback((removedIds: ReadonlySet<string>) => {
-    setIndex((prev) => {
-      if (!prev) return prev;
-      const removedIndices = prev.bundles
-        .map((b, i) => (removedIds.has(b.bundle_id) ? i : -1))
-        .filter((i) => i >= 0);
-      const lowest = removedIndices.length > 0 ? Math.min(...removedIndices) : -1;
-      const remaining = prev.bundles.filter((b) => !removedIds.has(b.bundle_id));
+  const removeBundlesAndAdvance = useCallback(
+    (removedIds: ReadonlySet<string>) => {
+      setIndex((prev) => {
+        if (!prev) return prev;
+        // "Next" should be a still-visible neighbour, not just the next bundle
+        // in the unfiltered list — otherwise deleting a pick while the Pick
+        // filter is on jumps to a bundle that's invisible.
+        const visibleBefore = applyFilter(prev.bundles, filterMode);
+        const removedVisibleIndices = visibleBefore
+          .map((b, i) => (removedIds.has(b.bundle_id) ? i : -1))
+          .filter((i) => i >= 0);
+        const lowestVisible =
+          removedVisibleIndices.length > 0
+            ? Math.min(...removedVisibleIndices)
+            : -1;
 
-      if (remaining.length === 0) {
-        resetSelection();
-      } else if (lowest >= 0) {
-        const nextIdx = Math.min(lowest, remaining.length - 1);
-        const nextId = remaining[nextIdx].bundle_id;
-        setActiveId(nextId);
-        setSelectedIds(new Set([nextId]));
-        setAnchorId(nextId);
-      }
-      return { ...prev, bundles: remaining };
-    });
-  }, []);
+        const remaining = prev.bundles.filter(
+          (b) => !removedIds.has(b.bundle_id),
+        );
+        const visibleAfter = applyFilter(remaining, filterMode);
+
+        if (visibleAfter.length === 0) {
+          resetSelection();
+        } else if (lowestVisible >= 0) {
+          const nextIdx = Math.min(lowestVisible, visibleAfter.length - 1);
+          const nextId = visibleAfter[nextIdx].bundle_id;
+          setActiveId(nextId);
+          setSelectedIds(new Set([nextId]));
+          setAnchorId(nextId);
+        }
+        return { ...prev, bundles: remaining };
+      });
+    },
+    [filterMode],
+  );
 
   const collectSelectedFiles = useCallback((): {
     folder: string;
@@ -577,13 +601,13 @@ function App() {
   );
 
   const selectAll = useCallback(() => {
-    if (!index) return;
-    setSelectedIds(new Set(index.bundles.map((b) => b.bundle_id)));
-    if (!activeId && index.bundles.length > 0) {
-      setActiveId(index.bundles[0].bundle_id);
-      setAnchorId(index.bundles[0].bundle_id);
+    if (filteredBundles.length === 0) return;
+    setSelectedIds(new Set(filteredBundles.map((b) => b.bundle_id)));
+    if (!activeId) {
+      setActiveId(filteredBundles[0].bundle_id);
+      setAnchorId(filteredBundles[0].bundle_id);
     }
-  }, [activeId, index]);
+  }, [activeId, filteredBundles]);
 
   const collapseToActive = useCallback(() => {
     if (activeId) {
@@ -754,16 +778,36 @@ function App() {
       )}
 
       {index && index.bundles.length > 0 && (
+        <div className="filter-bar">
+          <span className="filter-label">Filter</span>
+          {FILTER_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`filter-chip${filterMode === m ? " active" : ""}`}
+              onClick={() => setFilterMode(m)}
+            >
+              {FILTER_LABELS[m]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {index && index.bundles.length > 0 && (
         <div className={`workspace${focusMode ? " focus" : ""}`}>
           <div className="grid-area">
-            <ThumbnailGrid
-              bundles={index.bundles}
-              thumbs={thumbs}
-              activeId={activeId}
-              selectedIds={selectedIds}
-              onTileClick={handleTileClick}
-              tileSize={TILE_SIZES[tileLabel]}
-            />
+            {filteredBundles.length === 0 ? (
+              <div className="empty">No bundles match the current filter.</div>
+            ) : (
+              <ThumbnailGrid
+                bundles={filteredBundles}
+                thumbs={thumbs}
+                activeId={activeId}
+                selectedIds={selectedIds}
+                onTileClick={handleTileClick}
+                tileSize={TILE_SIZES[tileLabel]}
+              />
+            )}
           </div>
           <aside className="sidebar">
             <PreviewPane
@@ -801,7 +845,11 @@ function App() {
             <>
               <span className="status-name">{activeBundle.base_name}</span>
               <span className="status-pos">
-                ({activeIndex + 1}/{index.bundles.length})
+                ({activeIndex + 1}/{filteredBundles.length}
+                {filteredBundles.length !== index.bundles.length
+                  ? ` of ${index.bundles.length}`
+                  : ""}
+                )
               </span>
             </>
           ) : (

@@ -104,6 +104,47 @@ html,
   color: #ffffff;
 }
 
+/* ---------- Filter bar ---------- */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #d0d0d0;
+  background: #fafafa;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 11px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.filter-chip {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid #c0c0c0;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+
+.filter-chip:hover:not(.active) {
+  border-color: #396cd8;
+}
+
+.filter-chip.active {
+  background: #396cd8;
+  color: #ffffff;
+  border-color: #396cd8;
+}
+
 /* ---------- Errors / empty ---------- */
 .error {
   display: flex;
@@ -926,10 +967,23 @@ html,
   .topbar > button,
   .size-selector button,
   .detail-actions button,
-  .flag-btn {
+  .flag-btn,
+  .filter-chip {
     background: #2a2a2a;
     color: #e8e8e8;
     border-color: #4a4a4a;
+  }
+  .filter-bar {
+    background: #232323;
+    border-bottom-color: #3a3a3a;
+  }
+  .filter-label {
+    color: #aaa;
+  }
+  .filter-chip.active {
+    background: #396cd8;
+    color: #ffffff;
+    border-color: #396cd8;
   }
   .star {
     color: #555;
