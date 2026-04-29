@@ -16,6 +16,7 @@ import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
 import { joinPath } from "./utils/path";
+import { selectPreviewFile } from "./utils/preview";
 import { rangeIds } from "./utils/selection";
 import {
   applyFilter,
@@ -29,9 +30,6 @@ import "./App.css";
 const TILE_SIZES = { S: 128, M: 200, L: 320 } as const;
 type TileLabel = keyof typeof TILE_SIZES;
 
-function previewFile(b: BundleSummary): string | null {
-  return b.files.find((f) => f.role === "jpeg")?.path ?? null;
-}
 
 function App() {
   const [index, setIndex] = useState<FolderIndex | null>(null);
@@ -191,7 +189,7 @@ function App() {
     const initial: ThumbMap = {};
     const requests: ThumbnailRequest[] = [];
     for (const b of index.bundles) {
-      const file = previewFile(b);
+      const file = selectPreviewFile(b);
       if (file) {
         initial[b.bundle_id] = { kind: "loading" };
         requests.push({ bundle_id: b.bundle_id, file });
@@ -286,9 +284,9 @@ function App() {
 
   const previewSrc = useMemo(() => {
     if (!activeBundle || !index) return null;
-    const jpg = activeBundle.files.find((f) => f.role === "jpeg");
-    if (!jpg) return null;
-    return joinPath(index.folder_path, jpg.path);
+    const file = selectPreviewFile(activeBundle);
+    if (!file) return null;
+    return joinPath(index.folder_path, file);
   }, [activeBundle, index]);
 
   // Load (or reset) the active bundle's sidecar whenever the active selection
