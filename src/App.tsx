@@ -880,6 +880,11 @@ function App() {
           e.preventDefault();
           void openActive("jpeg");
           break;
+        case "r":
+        case "R":
+          e.preventDefault();
+          void openActive("raw");
+          break;
         case "Enter":
           if (activeBundle && !addingPost && !busy) {
             e.preventDefault();
@@ -1133,7 +1138,7 @@ function App() {
           </span>
           {busy && <span className="mode-tag busy">Working…</span>}
           <span className="hints">
-            Click · Shift/Ctrl · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O ·
+            Click · Shift/Ctrl · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O/R ·
             Enter · 0–5 · P/X
           </span>
         </footer>

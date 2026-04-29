@@ -128,8 +128,8 @@ export function DetailPanel({
           disabled={busy || !hasRaw}
           title={
             multi
-              ? `Open every selected bundle's RAW in the configured developer (up to ${selectedCount})`
-              : "Open RAW in the configured developer"
+              ? `Open every selected bundle's RAW in the configured developer (up to ${selectedCount}) — R`
+              : "Open RAW in the configured developer — R"
           }
         >
           Open RAW{rawSuffix}
