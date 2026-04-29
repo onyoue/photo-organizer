@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BundleRef, BundleSummary, FolderIndex } from "./types/bundle";
@@ -62,6 +63,7 @@ function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>({});
   const [showSettings, setShowSettings] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // F1 hold-to-show keyboard cheatsheet overlay. Bound at window level so it
   // works regardless of focus, including while typing in the tag/post inputs.
@@ -114,21 +116,55 @@ function App() {
     setAnchorId(id);
   }
 
-  async function pickAndOpenFolder() {
+  const loadFolderByPath = useCallback(async (path: string) => {
     setError(null);
     setThumbs({});
     resetSelection();
     setPixelOffset({ dx: 0, dy: 0 });
+    setLoading(true);
     try {
-      const selected = await open({ directory: true, multiple: false });
-      if (!selected || typeof selected !== "string") return;
-      setLoading(true);
-      const result = await invoke<FolderIndex>("open_folder", { path: selected });
+      const result = await invoke<FolderIndex>("open_folder", { path });
       setIndex(result);
     } catch (e: unknown) {
       setError(toMessage(e));
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  // OS-level drag-drop into the window. The backend's open_folder tolerates
+  // file paths (falls back to the parent dir), so dropping either a folder
+  // or any single file inside one does the right thing.
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    void (async () => {
+      const win = getCurrentWebviewWindow();
+      unlisten = await win.onDragDropEvent((event) => {
+        const p = event.payload;
+        if (p.type === "enter" || p.type === "over") {
+          setIsDraggingOver(true);
+        } else if (p.type === "leave") {
+          setIsDraggingOver(false);
+        } else if (p.type === "drop") {
+          setIsDraggingOver(false);
+          if (p.paths.length > 0) {
+            void loadFolderByPath(p.paths[0]);
+          }
+        }
+      });
+    })();
+    return () => {
+      unlisten?.();
+    };
+  }, [loadFolderByPath]);
+
+  async function pickAndOpenFolder() {
+    try {
+      const selected = await open({ directory: true, multiple: false });
+      if (!selected || typeof selected !== "string") return;
+      await loadFolderByPath(selected);
+    } catch (e: unknown) {
+      setError(toMessage(e));
     }
   }
 
@@ -962,6 +998,17 @@ function App() {
       )}
 
       <CheatsheetOverlay visible={showCheatsheet} />
+
+      {isDraggingOver && (
+        <div className="drop-overlay" aria-hidden="true">
+          <div className="drop-message">
+            <div className="drop-message-title">Drop to open folder</div>
+            <div className="drop-message-hint">
+              A file works too — opens its parent directory.
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="error">
