@@ -21,12 +21,34 @@ const SIDECAR_SUFFIX: &str = ".photoorg.json";
 /// the UI can offer "operate on developed only" actions.
 fn classify_extension(ext: &str, is_variant: bool) -> FileRole {
     match ext.to_ascii_lowercase().as_str() {
-        "dng" | "raf" | "pef" | "arw" | "cr3" | "nef" | "raw" => FileRole::Raw,
+        // Manufacturer RAW formats. RWL is Leica's RAW (M9, M-Monochrom, etc.)
+        // — the original REQUIREMENTS example put it under Sidecar by
+        // mistake.
+        "arw" | "sr2" | "srf"             // Sony
+        | "cr2" | "cr3" | "crw"           // Canon
+        | "dng"                           // Adobe / Leica / Pentax / etc.
+        | "3fr" | "fff"                   // Hasselblad
+        | "dcr" | "kdc"                   // Kodak
+        | "erf"                           // Epson
+        | "iiq"                           // Phase One
+        | "mef"                           // Mamiya
+        | "mos"                           // Leaf
+        | "mrw"                           // Minolta
+        | "nef" | "nrw"                   // Nikon
+        | "orf" | "ori"                   // Olympus / OM System
+        | "pef" | "ptx"                   // Pentax
+        | "raf"                           // Fujifilm
+        | "raw"                           // generic
+        | "rw2"                           // Panasonic
+        | "rwl"                           // Leica
+        | "srw"                           // Samsung
+        | "x3f"                           // Sigma Foveon
+        => FileRole::Raw,
         "jpg" | "jpeg" if is_variant => FileRole::Developed,
         "jpg" | "jpeg" => FileRole::Jpeg,
         // .json covers RAW developer apps that drop their own metadata sidecars
         // alongside the developed file (the user is building one such app).
-        "xmp" | "pp3" | "dop" | "rwl" | "json" => FileRole::Sidecar,
+        "xmp" | "pp3" | "dop" | "json" => FileRole::Sidecar,
         _ => FileRole::Unknown,
     }
 }
@@ -320,6 +342,43 @@ mod tests {
         assert_eq!(idx.bundles.len(), 1);
         assert_eq!(idx.bundles[0].base_name, "DSC_0123");
         assert_eq!(idx.bundles[0].files.len(), 1);
+    }
+
+    #[test]
+    fn olympus_orf_is_classified_as_raw() {
+        // User-reported: ORF was falling through to Unknown.
+        let tmp = tempdir_for_test();
+        touch(&tmp, "P5010001.ORF", b"raw");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 1);
+        assert_eq!(idx.bundles[0].files[0].role, FileRole::Raw);
+    }
+
+    #[test]
+    fn common_manufacturer_raw_extensions_are_recognised() {
+        // One bundle per file (each has a unique stem). Every file should be
+        // classified Raw — guards against another regression where a popular
+        // format is missing.
+        let tmp = tempdir_for_test();
+        let raws = [
+            "a.ARW", "b.CR2", "c.CR3", "d.DNG", "e.NEF", "f.ORF", "g.RAF",
+            "h.RW2", "i.RWL", "j.X3F", "k.PEF", "l.NRW", "m.SRW",
+        ];
+        for name in &raws {
+            touch(&tmp, name, b"raw");
+        }
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), raws.len());
+        for b in &idx.bundles {
+            assert_eq!(
+                b.files[0].role,
+                FileRole::Raw,
+                "{} should be classified Raw",
+                b.files[0].path,
+            );
+        }
     }
 
     #[test]

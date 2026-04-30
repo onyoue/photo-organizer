@@ -6,10 +6,10 @@ use crate::error::AppResult;
 use crate::models::bundle::FolderIndex;
 
 const INDEX_FILE: &str = "index.json";
-// v2: bundle structure changed when '.' was added as a variant boundary
-// (so RAW dev sidecars like <base>.DNG.rawdev.json group correctly).
-// v1 caches encode pre-fix groupings — discard them on first read.
-pub const INDEX_VERSION: u32 = 2;
+// v3: classify_extension grew (ORF, RW2, X3F, … added; RWL re-classified
+// from Sidecar to Raw to match Leica's actual usage). v2 caches encode the
+// old role assignments — discard them on first read so the new rules apply.
+pub const INDEX_VERSION: u32 = 3;
 
 pub fn index_path(folder: &Path) -> PathBuf {
     folder.join(APP_DIR).join(INDEX_FILE)
