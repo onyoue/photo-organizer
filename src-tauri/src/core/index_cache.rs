@@ -6,10 +6,10 @@ use crate::error::AppResult;
 use crate::models::bundle::FolderIndex;
 
 const INDEX_FILE: &str = "index.json";
-// v3: classify_extension grew (ORF, RW2, X3F, … added; RWL re-classified
-// from Sidecar to Raw to match Leica's actual usage). v2 caches encode the
-// old role assignments — discard them on first read so the new rules apply.
-pub const INDEX_VERSION: u32 = 3;
+// v4: PNG / TIFF / TIF now classify as Jpeg or Developed (matching JPG)
+// rather than Unknown. v3 caches encode the old roles — discard so the
+// new bucket assignments take effect.
+pub const INDEX_VERSION: u32 = 4;
 
 pub fn index_path(folder: &Path) -> PathBuf {
     folder.join(APP_DIR).join(INDEX_FILE)

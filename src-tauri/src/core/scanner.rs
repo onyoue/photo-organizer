@@ -44,8 +44,12 @@ fn classify_extension(ext: &str, is_variant: bool) -> FileRole {
         | "srw"                           // Samsung
         | "x3f"                           // Sigma Foveon
         => FileRole::Raw,
-        "jpg" | "jpeg" if is_variant => FileRole::Developed,
-        "jpg" | "jpeg" => FileRole::Jpeg,
+        // PNG and TIFF join the JPG bucket — RAW developers regularly export
+        // to TIFF for higher fidelity, and PNG shows up for screenshot-style
+        // exports. Variant detection still hinges on whether the stem
+        // matches the canonical or carries a `_<suffix>` / `.<suffix>` tail.
+        "jpg" | "jpeg" | "png" | "tif" | "tiff" if is_variant => FileRole::Developed,
+        "jpg" | "jpeg" | "png" | "tif" | "tiff" => FileRole::Jpeg,
         // .json covers RAW developer apps that drop their own metadata sidecars
         // alongside the developed file (the user is building one such app).
         "xmp" | "pp3" | "dop" | "json" => FileRole::Sidecar,
@@ -342,6 +346,42 @@ mod tests {
         assert_eq!(idx.bundles.len(), 1);
         assert_eq!(idx.bundles[0].base_name, "DSC_0123");
         assert_eq!(idx.bundles[0].files.len(), 1);
+    }
+
+    #[test]
+    fn tiff_and_png_are_bundled_with_their_canonical_and_classified_developed() {
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0123.DNG", b"raw");
+        touch(&tmp, "DSC_0123.JPG", b"in-camera");
+        touch(&tmp, "DSC_0123_edit.tiff", b"tiff variant");
+        touch(&tmp, "DSC_0123_review.png", b"png variant");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 1);
+        let b = &idx.bundles[0];
+        assert_eq!(b.base_name, "DSC_0123");
+        assert_eq!(b.files.len(), 4);
+
+        let dev: Vec<_> = b
+            .files
+            .iter()
+            .filter(|f| f.role == FileRole::Developed)
+            .map(|f| f.path.as_str())
+            .collect();
+        assert!(dev.contains(&"DSC_0123_edit.tiff"));
+        assert!(dev.contains(&"DSC_0123_review.png"));
+    }
+
+    #[test]
+    fn standalone_png_is_in_camera_role() {
+        // No matching DSC_0001.* exists, so DSC_0001.png is canonical itself
+        // and gets the Jpeg role (not Developed).
+        let tmp = tempdir_for_test();
+        touch(&tmp, "DSC_0001.png", b"png");
+
+        let idx = scan_folder(&tmp, false).unwrap();
+        assert_eq!(idx.bundles.len(), 1);
+        assert_eq!(idx.bundles[0].files[0].role, FileRole::Jpeg);
     }
 
     #[test]

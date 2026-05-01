@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { BundleFile, BundleSummary } from "../types/bundle";
-import { selectPreviewFile } from "./preview";
+import {
+  previewVariants,
+  selectPreviewFile,
+  selectThumbnailSource,
+} from "./preview";
 
 function file(role: BundleFile["role"], path: string, mtime: string): BundleFile {
   return { role, path, size: 0, mtime };
@@ -63,5 +67,89 @@ describe("selectPreviewFile", () => {
       file("developed", "a_edit.jpg", "2026-01-01T00:00:00Z"),
     ]);
     expect(selectPreviewFile(b)).toBe("a_edit.jpg");
+  });
+});
+
+describe("previewVariants", () => {
+  it("orders developed newest-first, then in-camera last", () => {
+    const b = bundle([
+      file("raw", "a.dng", "2026-01-01T00:00:00Z"),
+      file("developed", "a_v1.jpg", "2026-01-01T00:00:00Z"),
+      file("developed", "a_v3.jpg", "2026-03-01T00:00:00Z"),
+      file("developed", "a_v2.jpg", "2026-02-01T00:00:00Z"),
+      file("jpeg", "a.jpg", "2026-01-01T00:00:00Z"),
+    ]);
+    expect(previewVariants(b).map((f) => f.path)).toEqual([
+      "a_v3.jpg",
+      "a_v2.jpg",
+      "a_v1.jpg",
+      "a.jpg",
+    ]);
+  });
+
+  it("returns empty for a RAW-only bundle", () => {
+    expect(previewVariants(bundle([file("raw", "x.dng", "")]))).toEqual([]);
+  });
+
+  it("returns just in-camera when no developed exist", () => {
+    const b = bundle([
+      file("raw", "x.dng", ""),
+      file("jpeg", "x.jpg", ""),
+    ]);
+    expect(previewVariants(b).map((f) => f.path)).toEqual(["x.jpg"]);
+  });
+
+  it("ignores sidecar files entirely", () => {
+    const b = bundle([
+      file("sidecar", "a.dng.rawdev.json", ""),
+      file("developed", "a_edit.jpg", "2026-01-01T00:00:00Z"),
+    ]);
+    expect(previewVariants(b).map((f) => f.path)).toEqual(["a_edit.jpg"]);
+  });
+
+  it("first entry agrees with selectPreviewFile", () => {
+    const b = bundle([
+      file("jpeg", "a.jpg", "2030-01-01T00:00:00Z"),
+      file("developed", "a_edit.jpg", "2026-01-01T00:00:00Z"),
+    ]);
+    expect(previewVariants(b)[0].path).toBe(selectPreviewFile(b));
+  });
+
+  it("excludes tiff files even though they share the JPG role bucket", () => {
+    // TIFF gets the developed/jpeg role for organisational purposes, but
+    // webview <img> can't render it — so it shouldn't appear when the user
+    // cycles through preview variants.
+    const b = bundle([
+      file("developed", "a_v3.tiff", "2026-03-01T00:00:00Z"),
+      file("developed", "a_v2.jpg", "2026-02-01T00:00:00Z"),
+      file("developed", "a_v1.png", "2026-01-01T00:00:00Z"),
+    ]);
+    expect(previewVariants(b).map((f) => f.path)).toEqual([
+      "a_v2.jpg",
+      "a_v1.png",
+    ]);
+  });
+
+  it("includes png alongside jpg as renderable", () => {
+    const b = bundle([
+      file("jpeg", "a.png", "2026-01-01T00:00:00Z"),
+    ]);
+    expect(selectPreviewFile(b)).toBe("a.png");
+  });
+});
+
+describe("selectThumbnailSource", () => {
+  it("includes tiff so TIFF-only bundles still get a thumbnail", () => {
+    const b = bundle([file("jpeg", "a.tiff", "")]);
+    expect(selectThumbnailSource(b)).toBe("a.tiff");
+  });
+
+  it("prefers latest developed regardless of extension", () => {
+    const b = bundle([
+      file("developed", "a_v1.jpg", "2026-01-01T00:00:00Z"),
+      file("developed", "a_v2.tiff", "2026-03-01T00:00:00Z"),
+      file("jpeg", "a.jpg", "2026-01-01T00:00:00Z"),
+    ]);
+    expect(selectThumbnailSource(b)).toBe("a_v2.tiff");
   });
 });

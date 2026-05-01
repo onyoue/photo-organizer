@@ -16,7 +16,7 @@ import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
 import { joinPath } from "./utils/path";
-import { selectPreviewFile } from "./utils/preview";
+import { selectPreviewFile, selectThumbnailSource } from "./utils/preview";
 import { rangeIds } from "./utils/selection";
 import {
   applyFilter,
@@ -209,7 +209,7 @@ function App() {
     const initial: ThumbMap = {};
     const requests: ThumbnailRequest[] = [];
     for (const b of index.bundles) {
-      const file = selectPreviewFile(b);
+      const file = selectThumbnailSource(b);
       if (file) {
         initial[b.bundle_id] = { kind: "loading" };
         requests.push({ bundle_id: b.bundle_id, file });
