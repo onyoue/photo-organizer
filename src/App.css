@@ -1042,6 +1042,37 @@ html,
   font-size: 11px;
 }
 
+.file.selectable-preview {
+  cursor: pointer;
+  border-radius: 3px;
+  padding-left: 4px;
+  padding-right: 4px;
+  margin-left: -4px;
+  margin-right: -4px;
+}
+
+.file.selectable-preview:hover {
+  background: rgba(57, 108, 216, 0.08);
+}
+
+.file.current-preview {
+  background: rgba(57, 108, 216, 0.15);
+  font-weight: 600;
+}
+
+.file.current-preview .file-path::before {
+  content: "▶ ";
+  color: #396cd8;
+  font-weight: 700;
+}
+
+.mode-tag.variant {
+  background: #f0e0fa;
+  color: #4a2a8a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+}
+
 /* ---------- Posts ---------- */
 .posts-section {
   margin-top: 12px;
@@ -1456,6 +1487,12 @@ html,
     background: transparent;
     color: #aaa;
     border-color: #4a4a4a;
+  }
+  .file.selectable-preview:hover {
+    background: rgba(120, 160, 230, 0.15);
+  }
+  .file.current-preview {
+    background: rgba(120, 160, 230, 0.22);
   }
   .settings-actions button.primary {
     background: #396cd8;

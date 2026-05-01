@@ -17,6 +17,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Shift + Click", description: "Range from anchor" },
       { keys: "← / →", description: "Prev / next bundle" },
       { keys: "Shift + ← / →", description: "Extend selection" },
+      { keys: "↑ / ↓", description: "Cycle preview variant within bundle" },
       { keys: "Ctrl/Cmd + A", description: "Select all (visible)" },
       { keys: "Esc", description: "Exit fullscreen / collapse to active" },
     ],

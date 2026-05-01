@@ -16,7 +16,10 @@ import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
 import { joinPath } from "./utils/path";
-import { selectPreviewFile, selectThumbnailSource } from "./utils/preview";
+import {
+  previewVariants,
+  selectThumbnailSource,
+} from "./utils/preview";
 import { rangeIds } from "./utils/selection";
 import {
   applyFilter,
@@ -57,6 +60,13 @@ function App() {
 
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [filterTag, setFilterTag] = useState<string | null>(null);
+
+  // null = auto (uses previewVariants[0]); a number is an explicit index into
+  // the active bundle's variant list, set by ↑/↓ or by clicking a row in
+  // the file list.
+  const [previewVariantIndex, setPreviewVariantIndex] = useState<number | null>(
+    null,
+  );
 
   const [appSettings, setAppSettings] = useState<AppSettings>({
     raw_developers: [],
@@ -302,12 +312,50 @@ function App() {
     [filteredBundles, activeId],
   );
 
+  const activeVariants = useMemo(
+    () => (activeBundle ? previewVariants(activeBundle) : []),
+    [activeBundle],
+  );
+
+  // Reset variant cursor when the active bundle changes; otherwise an index
+  // from the previous bundle could leak in and pick the wrong file.
+  useEffect(() => {
+    setPreviewVariantIndex(null);
+  }, [activeId]);
+
+  const currentPreviewVariant = useMemo(() => {
+    if (activeVariants.length === 0) return null;
+    if (previewVariantIndex === null) return activeVariants[0];
+    return (
+      activeVariants[previewVariantIndex] ?? activeVariants[0] ?? null
+    );
+  }, [activeVariants, previewVariantIndex]);
+
   const previewSrc = useMemo(() => {
-    if (!activeBundle || !index) return null;
-    const file = selectPreviewFile(activeBundle);
-    if (!file) return null;
-    return joinPath(index.folder_path, file);
-  }, [activeBundle, index]);
+    if (!currentPreviewVariant || !index) return null;
+    return joinPath(index.folder_path, currentPreviewVariant.path);
+  }, [currentPreviewVariant, index]);
+
+  const cyclePreviewVariant = useCallback(
+    (delta: number) => {
+      if (activeVariants.length < 2) return;
+      setPreviewVariantIndex((prev) => {
+        const cur = prev ?? 0;
+        const len = activeVariants.length;
+        return ((cur + delta) % len + len) % len;
+      });
+    },
+    [activeVariants.length],
+  );
+
+  const selectPreviewByPath = useCallback(
+    (path: string) => {
+      const idx = activeVariants.findIndex((f) => f.path === path);
+      if (idx < 0) return;
+      setPreviewVariantIndex(idx);
+    },
+    [activeVariants],
+  );
 
   // Load (or reset) the active bundle's sidecar whenever the active selection
   // changes. Editing posts on the wrong bundle would be a nasty bug, so we
@@ -871,6 +919,14 @@ function App() {
           e.preventDefault();
           navigateBy(1, e.shiftKey);
           break;
+        case "ArrowUp":
+          e.preventDefault();
+          cyclePreviewVariant(-1);
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          cyclePreviewVariant(1);
+          break;
         case "Escape":
           e.preventDefault();
           // Exit fullscreen first (the more disruptive state); only collapse
@@ -954,6 +1010,7 @@ function App() {
     busy,
     fullscreenMode,
     cycleRawDeveloper,
+    cyclePreviewVariant,
     setRatingForSelection,
     toggleFlagForSelection,
   ]);
@@ -1134,6 +1191,8 @@ function App() {
               onSetRating={setRatingForSelection}
               onToggleFlag={toggleFlagForSelection}
               onSetTags={setTagsForActive}
+              currentPreviewPath={currentPreviewVariant?.path ?? null}
+              onSelectPreview={selectPreviewByPath}
             />
           </aside>
         </div>
@@ -1161,6 +1220,19 @@ function App() {
           <span className={`mode-tag ${previewMode}`}>
             {previewMode === "fit" ? "Fit" : "100%"}
           </span>
+          {activeVariants.length > 1 && currentPreviewVariant && (
+            <span
+              className="mode-tag variant"
+              title="↑/↓ to cycle preview variant"
+            >
+              {currentPreviewVariant.path}
+              {" "}
+              {(activeVariants.findIndex(
+                (f) => f.path === currentPreviewVariant.path,
+              ) + 1)}
+              /{activeVariants.length}
+            </span>
+          )}
           {busy && <span className="mode-tag busy">Working…</span>}
           {(appSettings.raw_developers?.length ?? 0) > 1 && activeRawDeveloper && (
             <span
@@ -1186,6 +1258,16 @@ function App() {
           <span className={`mode-tag ${previewMode}`}>
             {previewMode === "fit" ? "Fit" : "100%"}
           </span>
+          {activeVariants.length > 1 && currentPreviewVariant && (
+            <span className="mode-tag variant">
+              {currentPreviewVariant.path}
+              {" "}
+              {(activeVariants.findIndex(
+                (f) => f.path === currentPreviewVariant.path,
+              ) + 1)}
+              /{activeVariants.length}
+            </span>
+          )}
           {(appSettings.raw_developers?.length ?? 0) > 1 && activeRawDeveloper && (
             <span className="mode-tag raw-dev">RAW: {activeRawDeveloper.name}</span>
           )}

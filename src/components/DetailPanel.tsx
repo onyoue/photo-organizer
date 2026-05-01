@@ -29,7 +29,14 @@ interface Props {
   onToggleFlag: (target: Flag) => void;
 
   onSetTags: (tags: string[]) => void;
+
+  /** Path of the file currently shown in the preview pane, or null. */
+  currentPreviewPath: string | null;
+  /** Pick a JPG/Developed file as the preview source. */
+  onSelectPreview: (path: string) => void;
 }
+
+const RENDERABLE_IMAGE_RE = /\.(jpe?g|png)$/i;
 
 function suffix(n: number): string {
   return n > 1 ? ` (${n})` : "";
@@ -55,6 +62,8 @@ export function DetailPanel({
   onSetRating,
   onToggleFlag,
   onSetTags,
+  currentPreviewPath,
+  onSelectPreview,
 }: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
@@ -186,15 +195,26 @@ export function DetailPanel({
       </div>
 
       <ul className="detail-files">
-        {bundle.files.map((f) => (
-          <li key={f.path} className={`file role-${f.role}`}>
-            <span className="role-tag">{f.role}</span>
-            <span className="file-path" title={f.path}>
-              {f.path}
-            </span>
-            <span className="file-size">{formatSize(f.size)}</span>
-          </li>
-        ))}
+        {bundle.files.map((f) => {
+          const renderable =
+            (f.role === "developed" || f.role === "jpeg") &&
+            RENDERABLE_IMAGE_RE.test(f.path);
+          const isCurrent = currentPreviewPath === f.path;
+          return (
+            <li
+              key={f.path}
+              className={`file role-${f.role}${
+                renderable ? " selectable-preview" : ""
+              }${isCurrent ? " current-preview" : ""}`}
+              onClick={renderable ? () => onSelectPreview(f.path) : undefined}
+              title={renderable ? "Click to preview" : f.path}
+            >
+              <span className="role-tag">{f.role}</span>
+              <span className="file-path">{f.path}</span>
+              <span className="file-size">{formatSize(f.size)}</span>
+            </li>
+          );
+        })}
       </ul>
 
       <TagsSection
