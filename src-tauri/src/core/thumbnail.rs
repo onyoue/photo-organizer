@@ -12,7 +12,11 @@ use image::DynamicImage;
 use crate::core::APP_DIR;
 use crate::error::{AppError, AppResult};
 
-const THUMB_LONG_EDGE: u32 = 320;
+// Long-edge target for the cached thumbnail. The L tile is 320 CSS px wide;
+// with object-fit: cover on a 3:2 photo that visually crops the long edge to
+// about 480 px, and a 2x DPI display doubles that again. 800 keeps L tiles
+// crisp on Retina / 200% Windows scaling, with headroom on 1x.
+const THUMB_LONG_EDGE: u32 = 800;
 const THUMB_QUALITY: f32 = 80.0;
 const THUMB_SUBDIR: &str = "thumbs";
 
@@ -33,6 +37,10 @@ fn cache_key(file_name: &str, size: u64, mtime: SystemTime) -> String {
     file_name.hash(&mut h);
     size.hash(&mut h);
     mtime_secs.hash(&mut h);
+    // Including the long-edge target means tweaking THUMB_LONG_EDGE (this
+    // happened when 320 → 800 to fix high-DPI blur) automatically invalidates
+    // every cache entry — they get a different hash and re-render lazily.
+    THUMB_LONG_EDGE.hash(&mut h);
     format!("{:016x}", h.finish())
 }
 
