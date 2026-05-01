@@ -28,16 +28,16 @@ pub async fn save_app_settings(app: AppHandle, settings: AppSettings) -> AppResu
         .expect("settings save task panicked")
 }
 
-/// Open one or more files in the configured RAW developer. Falls back to
-/// the OS default handler when no path is set, so the feature degrades
+/// Open one or more files in the active RAW developer. Falls back to the OS
+/// default handler when no developer is configured, so the feature degrades
 /// gracefully on a fresh install.
 #[tauri::command]
 pub async fn open_with_raw_developer(app: AppHandle, paths: Vec<String>) -> AppResult<()> {
     let dir = app_data_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         let settings = app_settings::read(&dir);
-        match settings.raw_developer_path {
-            Some(exe) => spawn_external(&exe, &paths),
+        match settings.active_raw_developer() {
+            Some(dev) => spawn_external(&dev.path, &paths),
             None => {
                 for p in &paths {
                     fileops::open_path(&PathBuf::from(p))?;
@@ -48,6 +48,28 @@ pub async fn open_with_raw_developer(app: AppHandle, paths: Vec<String>) -> AppR
     })
     .await
     .expect("open task panicked")
+}
+
+/// Cycle the active developer to the next entry in the list (wraps around).
+/// No-op when fewer than 2 developers are configured. Returns the updated
+/// settings so the frontend can display the new active without a separate
+/// get_app_settings call.
+#[tauri::command]
+pub async fn cycle_active_raw_developer(app: AppHandle) -> AppResult<AppSettings> {
+    let dir = app_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<AppSettings> {
+        let mut settings = app_settings::read(&dir);
+        let count = settings.raw_developers.len();
+        if count < 2 {
+            return Ok(settings);
+        }
+        settings.active_raw_developer_index =
+            (settings.active_raw_developer_index + 1) % count;
+        app_settings::write(&dir, &settings)?;
+        Ok(settings)
+    })
+    .await
+    .expect("cycle task panicked")
 }
 
 fn spawn_external(exe: &str, paths: &[String]) -> AppResult<()> {

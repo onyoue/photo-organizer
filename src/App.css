@@ -276,6 +276,69 @@ html,
   gap: 6px;
 }
 
+.raw-dev-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.raw-dev-row {
+  display: grid;
+  grid-template-columns: auto 110px 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.raw-dev-row input[type="text"] {
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  min-width: 0;
+}
+
+.raw-dev-row .raw-dev-name {
+  font-family: inherit;
+}
+
+.raw-dev-row button {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.raw-dev-remove {
+  color: #888;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 8px !important;
+}
+
+.raw-dev-remove:hover:not(:disabled) {
+  color: #c44;
+}
+
+.raw-dev-add {
+  align-self: flex-start;
+  padding: 4px 12px;
+  font-size: 12px;
+  border: 1px dashed #b0b0b0;
+  border-radius: 3px;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+}
+
+.raw-dev-add:hover:not(:disabled) {
+  border-color: #396cd8;
+  color: #396cd8;
+}
+
 .settings-row input {
   flex: 1;
   min-width: 0;
@@ -1329,6 +1392,12 @@ html,
   color: #1a4d8c;
 }
 
+.mode-tag.raw-dev {
+  background: #ffe4cc;
+  color: #8a4a00;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .hints {
   margin-left: auto;
   color: #888;
@@ -1376,9 +1445,16 @@ html,
   }
   .settings-row input,
   .settings-row button,
-  .settings-actions button {
+  .settings-actions button,
+  .raw-dev-row input,
+  .raw-dev-row button {
     background: #1f1f1f;
     color: #e8e8e8;
+    border-color: #4a4a4a;
+  }
+  .raw-dev-add {
+    background: transparent;
+    color: #aaa;
     border-color: #4a4a4a;
   }
   .settings-actions button.primary {

@@ -58,7 +58,10 @@ function App() {
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [filterTag, setFilterTag] = useState<string | null>(null);
 
-  const [appSettings, setAppSettings] = useState<AppSettings>({});
+  const [appSettings, setAppSettings] = useState<AppSettings>({
+    raw_developers: [],
+    active_raw_developer_index: 0,
+  });
   const [showSettings, setShowSettings] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -101,6 +104,23 @@ function App() {
     setAppSettings(next);
     setShowSettings(false);
   }, []);
+
+  const cycleRawDeveloper = useCallback(async () => {
+    const list = appSettings.raw_developers ?? [];
+    if (list.length < 2) return;
+    try {
+      const updated = await invoke<AppSettings>("cycle_active_raw_developer");
+      setAppSettings(updated);
+    } catch (e: unknown) {
+      setError(toMessage(e));
+    }
+  }, [appSettings.raw_developers]);
+
+  const activeRawDeveloper = useMemo(() => {
+    const list = appSettings.raw_developers ?? [];
+    const idx = appSettings.active_raw_developer_index ?? 0;
+    return list[idx];
+  }, [appSettings.raw_developers, appSettings.active_raw_developer_index]);
 
   function resetSelection() {
     setActiveId(null);
@@ -883,7 +903,11 @@ function App() {
         case "r":
         case "R":
           e.preventDefault();
-          void openActive("raw");
+          if (e.shiftKey) {
+            void cycleRawDeveloper();
+          } else {
+            void openActive("raw");
+          }
           break;
         case "Enter":
           if (activeBundle && !addingPost && !busy) {
@@ -929,6 +953,7 @@ function App() {
     addingPost,
     busy,
     fullscreenMode,
+    cycleRawDeveloper,
     setRatingForSelection,
     toggleFlagForSelection,
   ]);
@@ -1137,6 +1162,14 @@ function App() {
             {previewMode === "fit" ? "Fit" : "100%"}
           </span>
           {busy && <span className="mode-tag busy">Working…</span>}
+          {(appSettings.raw_developers?.length ?? 0) > 1 && activeRawDeveloper && (
+            <span
+              className="mode-tag raw-dev"
+              title="Active RAW developer (Shift+R to cycle)"
+            >
+              RAW: {activeRawDeveloper.name}
+            </span>
+          )}
           <span className="hints">
             Click · Shift/Ctrl · Ctrl+A · Esc · ← → · Space · F · Del/M/C/O/R ·
             Enter · 0–5 · P/X
@@ -1153,6 +1186,9 @@ function App() {
           <span className={`mode-tag ${previewMode}`}>
             {previewMode === "fit" ? "Fit" : "100%"}
           </span>
+          {(appSettings.raw_developers?.length ?? 0) > 1 && activeRawDeveloper && (
+            <span className="mode-tag raw-dev">RAW: {activeRawDeveloper.name}</span>
+          )}
           <span className="fs-hint">Esc to exit</span>
         </div>
       )}

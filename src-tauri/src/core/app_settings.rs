@@ -12,12 +12,14 @@ pub fn settings_path(app_data_dir: &Path) -> PathBuf {
 
 /// Read the persisted app settings. Returns defaults when the file is
 /// missing or unreadable — this is per-user config, never required.
+/// Legacy single-path values are migrated into the new list shape.
 pub fn read(app_data_dir: &Path) -> AppSettings {
     let path = settings_path(app_data_dir);
     let Ok(bytes) = fs::read(&path) else {
         return AppSettings::default();
     };
-    serde_json::from_slice(&bytes).unwrap_or_default()
+    let parsed: AppSettings = serde_json::from_slice(&bytes).unwrap_or_default();
+    parsed.migrate_legacy()
 }
 
 pub fn write(app_data_dir: &Path, settings: &AppSettings) -> AppResult<()> {
@@ -34,6 +36,7 @@ pub fn write(app_data_dir: &Path, settings: &AppSettings) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::settings::RawDeveloperEntry;
     use ulid::Ulid;
 
     fn tempdir() -> PathBuf {
@@ -46,18 +49,78 @@ mod tests {
     fn read_returns_default_when_absent() {
         let dir = tempdir();
         let s = read(&dir);
-        assert!(s.raw_developer_path.is_none());
+        assert!(s.raw_developers.is_empty());
+        assert_eq!(s.active_raw_developer_index, 0);
+        assert!(s.active_raw_developer().is_none());
     }
 
     #[test]
-    fn round_trips_via_disk() {
+    fn round_trips_list_via_disk() {
         let dir = tempdir();
         let s = AppSettings {
-            raw_developer_path: Some("C:\\my\\raw_dev.exe".into()),
+            raw_developers: vec![
+                RawDeveloperEntry {
+                    name: "Lightroom".into(),
+                    path: "C:\\lr.exe".into(),
+                },
+                RawDeveloperEntry {
+                    name: "MyDevApp".into(),
+                    path: "D:\\my-dev.exe".into(),
+                },
+            ],
+            active_raw_developer_index: 1,
+            raw_developer_path: None,
         };
         write(&dir, &s).unwrap();
         let loaded = read(&dir);
-        assert_eq!(loaded.raw_developer_path.as_deref(), Some("C:\\my\\raw_dev.exe"));
+        assert_eq!(loaded.raw_developers.len(), 2);
+        assert_eq!(loaded.raw_developers[1].name, "MyDevApp");
+        assert_eq!(loaded.active_raw_developer_index, 1);
+        assert_eq!(loaded.active_raw_developer().unwrap().path, "D:\\my-dev.exe");
+    }
+
+    #[test]
+    fn legacy_single_path_is_migrated_into_list() {
+        // Reproduces a v1 settings.json that the user wrote before the list
+        // shape existed.
+        let dir = tempdir();
+        fs::create_dir_all(&dir).unwrap();
+        let json = r#"{"raw_developer_path": "C:\\old\\rawdev.exe"}"#;
+        fs::write(settings_path(&dir), json).unwrap();
+
+        let loaded = read(&dir);
+        assert_eq!(loaded.raw_developers.len(), 1);
+        assert_eq!(loaded.raw_developers[0].path, "C:\\old\\rawdev.exe");
+        assert!(loaded.raw_developer_path.is_none(), "legacy field cleared");
+        assert_eq!(loaded.active_raw_developer_index, 0);
+    }
+
+    #[test]
+    fn migration_is_skipped_when_list_already_populated() {
+        let dir = tempdir();
+        fs::create_dir_all(&dir).unwrap();
+        let json = r#"{
+            "raw_developers": [{"name": "Keep", "path": "C:\\keep.exe"}],
+            "active_raw_developer_index": 0,
+            "raw_developer_path": "C:\\should-be-ignored.exe"
+        }"#;
+        fs::write(settings_path(&dir), json).unwrap();
+
+        let loaded = read(&dir);
+        assert_eq!(loaded.raw_developers.len(), 1);
+        assert_eq!(loaded.raw_developers[0].path, "C:\\keep.exe");
+        assert!(loaded.raw_developer_path.is_none());
+    }
+
+    #[test]
+    fn empty_legacy_string_is_not_migrated() {
+        let dir = tempdir();
+        fs::create_dir_all(&dir).unwrap();
+        let json = r#"{"raw_developer_path": "   "}"#;
+        fs::write(settings_path(&dir), json).unwrap();
+
+        let loaded = read(&dir);
+        assert!(loaded.raw_developers.is_empty());
     }
 
     #[test]
@@ -66,6 +129,19 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(settings_path(&dir), b"{not valid json").unwrap();
         let loaded = read(&dir);
-        assert!(loaded.raw_developer_path.is_none());
+        assert!(loaded.raw_developers.is_empty());
+    }
+
+    #[test]
+    fn out_of_range_active_index_yields_no_active_entry() {
+        let s = AppSettings {
+            raw_developers: vec![RawDeveloperEntry {
+                name: "Only".into(),
+                path: "x".into(),
+            }],
+            active_raw_developer_index: 5,
+            raw_developer_path: None,
+        };
+        assert!(s.active_raw_developer().is_none());
     }
 }

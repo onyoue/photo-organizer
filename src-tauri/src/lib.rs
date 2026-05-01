@@ -24,6 +24,7 @@ pub fn run() {
             commands::settings::get_app_settings,
             commands::settings::save_app_settings,
             commands::settings::open_with_raw_developer,
+            commands::settings::cycle_active_raw_developer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

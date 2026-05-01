@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import type { AppSettings } from "../types/settings";
+import type { AppSettings, RawDeveloperEntry } from "../types/settings";
 
 interface Props {
   initial: AppSettings;
@@ -9,25 +9,55 @@ interface Props {
   busy: boolean;
 }
 
+function clampActive(devs: RawDeveloperEntry[], desired: number): number {
+  if (devs.length === 0) return 0;
+  if (desired < 0) return 0;
+  if (desired >= devs.length) return devs.length - 1;
+  return desired;
+}
+
 export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
-  const [rawPath, setRawPath] = useState(initial.raw_developer_path ?? "");
+  const [devs, setDevs] = useState<RawDeveloperEntry[]>(
+    initial.raw_developers && initial.raw_developers.length > 0
+      ? initial.raw_developers
+      : [],
+  );
+  const [active, setActive] = useState<number>(
+    initial.active_raw_developer_index ?? 0,
+  );
   const [error, setError] = useState<string | null>(null);
 
-  async function browse() {
+  function updateAt(i: number, patch: Partial<RawDeveloperEntry>) {
+    setDevs((prev) =>
+      prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)),
+    );
+  }
+
+  function addEntry() {
+    setDevs((prev) => [...prev, { name: "", path: "" }]);
+  }
+
+  function removeAt(i: number) {
+    setDevs((prev) => {
+      const next = prev.filter((_, idx) => idx !== i);
+      setActive((a) => clampActive(next, a >= i ? a - 1 : a));
+      return next;
+    });
+  }
+
+  async function browseAt(i: number) {
     setError(null);
     try {
       const picked = await openDialog({
         multiple: false,
         directory: false,
-        // Windows uses .exe; macOS .app bundles aren't files in the dialog
-        // sense, so leave the filter loose. Linux has no extension convention.
         filters: [
           { name: "Executable", extensions: ["exe"] },
           { name: "All files", extensions: ["*"] },
         ],
       });
       if (typeof picked === "string") {
-        setRawPath(picked);
+        updateAt(i, { path: picked });
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -35,8 +65,19 @@ export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
   }
 
   async function save() {
+    // Trim and drop entries whose path is empty — a name without a path
+    // would just fall through to the OS default and confuse the indicator.
+    const cleaned = devs
+      .map((d) => ({ name: d.name.trim(), path: d.path.trim() }))
+      .filter((d) => d.path.length > 0)
+      .map((d) => ({
+        name: d.name || "RAW developer",
+        path: d.path,
+      }));
+
     const next: AppSettings = {
-      raw_developer_path: rawPath.trim() ? rawPath.trim() : undefined,
+      raw_developers: cleaned,
+      active_raw_developer_index: clampActive(cleaned, active),
     };
     try {
       await onSave(next);
@@ -68,24 +109,66 @@ export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
 
         <div className="settings-body">
           <div className="settings-field">
-            <label htmlFor="raw-dev-path">RAW developer (Open RAW)</label>
-            <div className="settings-row">
-              <input
-                id="raw-dev-path"
-                type="text"
-                value={rawPath}
-                onChange={(e) => setRawPath(e.target.value)}
-                placeholder="Falls back to OS default if empty"
+            <label>RAW developers (Open RAW / R)</label>
+            <p className="settings-hint">
+              Register one or more apps. The selected radio is the one R
+              opens; Shift+R cycles through them. Empty path falls back to the
+              OS default handler.
+            </p>
+            <div className="raw-dev-list">
+              {devs.map((d, i) => (
+                <div key={i} className="raw-dev-row">
+                  <input
+                    type="radio"
+                    name="active-raw-dev"
+                    checked={active === i}
+                    onChange={() => setActive(i)}
+                    disabled={busy}
+                    title="Set as active"
+                  />
+                  <input
+                    type="text"
+                    className="raw-dev-name"
+                    value={d.name}
+                    onChange={(e) => updateAt(i, { name: e.target.value })}
+                    placeholder="Name"
+                    disabled={busy}
+                  />
+                  <input
+                    type="text"
+                    className="raw-dev-path"
+                    value={d.path}
+                    onChange={(e) => updateAt(i, { path: e.target.value })}
+                    placeholder="C:\\path\\to\\rawdev.exe"
+                    disabled={busy}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => browseAt(i)}
+                    disabled={busy}
+                  >
+                    Browse…
+                  </button>
+                  <button
+                    type="button"
+                    className="raw-dev-remove"
+                    onClick={() => removeAt(i)}
+                    disabled={busy}
+                    title="Remove this entry"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="raw-dev-add"
+                onClick={addEntry}
                 disabled={busy}
-              />
-              <button type="button" onClick={browse} disabled={busy}>
-                Browse…
+              >
+                + Add developer
               </button>
             </div>
-            <p className="settings-hint">
-              Path to the executable that should open RAW files. Leave empty to
-              use the OS default handler.
-            </p>
           </div>
         </div>
 

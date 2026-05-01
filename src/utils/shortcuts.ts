@@ -37,6 +37,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "C", description: "Copy to folder…" },
       { keys: "O", description: "Open JPG in default app" },
       { keys: "R", description: "Open RAW in configured developer" },
+      { keys: "Shift + R", description: "Cycle active RAW developer" },
     ],
   },
   {
