@@ -34,6 +34,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "File ops",
     items: [
       { keys: "Delete", description: "Move to trash" },
+      { keys: "Shift + Delete", description: "Trash current preview variant only" },
       { keys: "M", description: "Move to folder…" },
       { keys: "C", description: "Copy to folder…" },
       { keys: "O", description: "Open JPG in default app" },

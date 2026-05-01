@@ -34,6 +34,8 @@ interface Props {
   currentPreviewPath: string | null;
   /** Pick a JPG/Developed file as the preview source. */
   onSelectPreview: (path: string) => void;
+  /** Trash a single JPG/Developed variant (with confirmation). */
+  onTrashVariant: (path: string) => void;
 }
 
 const RENDERABLE_IMAGE_RE = /\.(jpe?g|png)$/i;
@@ -64,6 +66,7 @@ export function DetailPanel({
   onSetTags,
   currentPreviewPath,
   onSelectPreview,
+  onTrashVariant,
 }: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
@@ -212,6 +215,22 @@ export function DetailPanel({
               <span className="role-tag">{f.role}</span>
               <span className="file-path">{f.path}</span>
               <span className="file-size">{formatSize(f.size)}</span>
+              {renderable ? (
+                <button
+                  type="button"
+                  className="file-trash"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTrashVariant(f.path);
+                  }}
+                  disabled={busy}
+                  title="Trash this variant only"
+                >
+                  ×
+                </button>
+              ) : (
+                <span className="file-trash-placeholder" />
+              )}
             </li>
           );
         })}

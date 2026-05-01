@@ -990,12 +990,37 @@ html,
 
 .file {
   display: grid;
-  grid-template-columns: 70px 1fr auto;
+  grid-template-columns: 70px 1fr auto auto;
   gap: 8px;
   align-items: center;
   padding: 2px 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
+}
+
+.file-trash {
+  border: 0;
+  background: transparent;
+  color: #aaa;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.file-trash:hover:not(:disabled) {
+  color: #c44;
+  background: rgba(200, 60, 60, 0.1);
+}
+
+.file-trash:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.file-trash-placeholder {
+  width: 22px;
 }
 
 .role-tag {

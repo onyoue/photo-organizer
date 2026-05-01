@@ -357,6 +357,78 @@ function App() {
     [activeVariants],
   );
 
+  const trashVariant = useCallback(
+    async (path: string) => {
+      if (!index || !activeBundle || busy) return;
+      // Match the file plus any sidecar that decorates it (e.g.
+      // <file>.rawdev.json) — same prefix-with-dot rule the bundling logic
+      // uses, so per-variant metadata follows the file into the trash and
+      // doesn't leave orphans behind.
+      const target = activeBundle.files.find((f) => f.path === path);
+      if (!target) return;
+      const attached = activeBundle.files.filter(
+        (f) => f.path !== target.path && f.path.startsWith(target.path + "."),
+      );
+      const allPaths = [target.path, ...attached.map((f) => f.path)];
+
+      const promptMsg =
+        attached.length === 0
+          ? `Move ${target.path} to trash?`
+          : `Move ${target.path} and ${attached.length} attached ${
+              attached.length === 1 ? "file" : "files"
+            } to trash?\n\n` +
+            attached.map((f) => `· ${f.path}`).join("\n");
+
+      let proceed = false;
+      try {
+        proceed = await ask(promptMsg, {
+          title: "Delete this variant",
+          kind: "warning",
+          okLabel: "Move to Trash",
+        });
+      } catch (e: unknown) {
+        setError(toMessage(e));
+        return;
+      }
+      if (!proceed) return;
+
+      setBusy(true);
+      setError(null);
+      try {
+        await invoke("trash_bundle", {
+          folder: index.folder_path,
+          files: allPaths,
+        });
+        const removed = new Set(allPaths);
+        setIndex((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            bundles: prev.bundles.map((b) =>
+              b.bundle_id === activeBundle.bundle_id
+                ? { ...b, files: b.files.filter((f) => !removed.has(f.path)) }
+                : b,
+            ),
+          };
+        });
+        // The variant list just shrank; bouncing back to auto picks whatever
+        // remains (latest developed → in-camera) without us having to know
+        // the new index.
+        setPreviewVariantIndex(null);
+      } catch (e: unknown) {
+        setError(toMessage(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [activeBundle, busy, index],
+  );
+
+  const trashCurrentVariant = useCallback(() => {
+    if (!currentPreviewVariant) return;
+    void trashVariant(currentPreviewVariant.path);
+  }, [currentPreviewVariant, trashVariant]);
+
   // Load (or reset) the active bundle's sidecar whenever the active selection
   // changes. Editing posts on the wrong bundle would be a nasty bug, so we
   // gate the displayed sidecar on a token tied to this load.
@@ -939,7 +1011,13 @@ function App() {
           break;
         case "Delete":
           e.preventDefault();
-          void deleteSelected();
+          if (e.shiftKey) {
+            // Shift+Delete is the variant-only path so a slip of the finger
+            // doesn't trash the entire bundle.
+            trashCurrentVariant();
+          } else {
+            void deleteSelected();
+          }
           break;
         case "m":
         case "M":
@@ -1011,6 +1089,7 @@ function App() {
     fullscreenMode,
     cycleRawDeveloper,
     cyclePreviewVariant,
+    trashCurrentVariant,
     setRatingForSelection,
     toggleFlagForSelection,
   ]);
@@ -1193,6 +1272,7 @@ function App() {
               onSetTags={setTagsForActive}
               currentPreviewPath={currentPreviewVariant?.path ?? null}
               onSelectPreview={selectPreviewByPath}
+              onTrashVariant={trashVariant}
             />
           </aside>
         </div>
