@@ -369,6 +369,40 @@ html,
   overflow: auto;
 }
 
+.gallery-bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  background: #f4f4f4;
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.gallery-selectall {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gallery-bulkcount {
+  flex: 1;
+  color: #666;
+}
+
+.gallery-bulkbar .gallery-delete {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.gallery-select {
+  margin-right: 4px;
+}
+
 .gallery-list {
   list-style: none;
   margin: 0;
@@ -1751,6 +1785,13 @@ html,
   .gallery-status {
     background: #1a3322;
     color: #b0e0b0;
+  }
+  .gallery-bulkbar {
+    background: #1f1f1f;
+    border-color: #3a3a3a;
+  }
+  .gallery-bulkcount {
+    color: #aaa;
   }
   .raw-dev-add {
     background: transparent;

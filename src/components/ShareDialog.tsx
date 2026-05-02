@@ -28,6 +28,9 @@ const EXPIRY_OPTIONS = [
   { days: 7, label: "7日" },
   { days: 14, label: "14日" },
   { days: 30, label: "30日" },
+  // 0 is the backend's sentinel for "no expiry" — resolved to a far-future
+  // expires_at server-side so the Worker still has a real timestamp.
+  { days: 0, label: "期限なし" },
 ];
 
 function basename(p: string): string {

@@ -13,6 +13,11 @@ use crate::models::settings::Decision;
 
 const MAX_PHOTOS: usize = 500;
 const MAX_DAYS: u32 = 365;
+/// Sentinel "no expiry" days value sent from the frontend. Resolved to a
+/// far-future expires_at (well beyond any expected lifetime of the link)
+/// so the Worker's expiry check still works without a special-case path.
+const UNLIMITED_DAYS: u32 = 0;
+const UNLIMITED_YEARS: i64 = 100;
 const PROGRESS_EVENT: &str = "gallery-share-progress";
 
 fn app_data_dir(app: &AppHandle) -> AppResult<PathBuf> {
@@ -77,9 +82,9 @@ pub async fn share_gallery(
             "too many photos (max {MAX_PHOTOS})"
         )));
     }
-    if args.expires_in_days == 0 || args.expires_in_days > MAX_DAYS {
+    if args.expires_in_days != UNLIMITED_DAYS && args.expires_in_days > MAX_DAYS {
         return Err(AppError::InvalidArgument(
-            "expires_in_days must be between 1 and 365".into(),
+            "expires_in_days must be 0 (unlimited) or between 1 and 365".into(),
         ));
     }
     if args.name.trim().is_empty() {
@@ -99,7 +104,11 @@ pub async fn share_gallery(
 
     let gid = Ulid::new().to_string();
     let now = Utc::now();
-    let expires_at = now + ChronoDuration::days(args.expires_in_days as i64);
+    let expires_at = if args.expires_in_days == UNLIMITED_DAYS {
+        now + ChronoDuration::days(UNLIMITED_YEARS * 365)
+    } else {
+        now + ChronoDuration::days(args.expires_in_days as i64)
+    };
 
     let folder_path = PathBuf::from(&args.folder);
     let mut photo_records: Vec<GalleryPhotoRecord> = Vec::with_capacity(args.photos.len());
@@ -275,6 +284,75 @@ pub async fn fetch_gallery_feedback(
         });
     }
     Ok(out)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BulkDeleteResult {
+    pub deleted: Vec<String>,
+    pub failed: Vec<BulkDeleteFailure>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BulkDeleteFailure {
+    pub gid: String,
+    pub error: String,
+}
+
+/// Delete multiple galleries in one call — used by the Galleries dialog's
+/// "delete selected" button. Each Worker call is best-effort; failures
+/// are reported per-gid rather than aborting the whole batch so a single
+/// network blip doesn't block cleanup of the others.
+#[tauri::command]
+pub async fn delete_galleries_bulk(
+    app: AppHandle,
+    gids: Vec<String>,
+) -> AppResult<BulkDeleteResult> {
+    let dir = app_data_dir(&app)?;
+    let settings = {
+        let dir = dir.clone();
+        tauri::async_runtime::spawn_blocking(move || app_settings::read(&dir))
+            .await
+            .map_err(|e| AppError::InvalidArgument(format!("settings task: {e}")))?
+    };
+
+    let client = if settings.gallery.is_configured() {
+        Some(GalleryClient::new(&settings.gallery)?)
+    } else {
+        None
+    };
+
+    let mut deleted = Vec::new();
+    let mut failed = Vec::new();
+    for gid in gids {
+        let worker_result = if let Some(c) = &client {
+            c.delete_gallery(&gid).await
+        } else {
+            Ok(())
+        };
+        match worker_result {
+            Ok(()) => {
+                let dir = dir.clone();
+                let gid_owned = gid.clone();
+                let local = tauri::async_runtime::spawn_blocking(move || {
+                    gallery_store::remove(&dir, &gid_owned)
+                })
+                .await
+                .map_err(|e| AppError::InvalidArgument(format!("remove task: {e}")))?;
+                match local {
+                    Ok(()) => deleted.push(gid),
+                    Err(e) => failed.push(BulkDeleteFailure {
+                        gid,
+                        error: e.to_string(),
+                    }),
+                }
+            }
+            Err(e) => failed.push(BulkDeleteFailure {
+                gid,
+                error: e.to_string(),
+            }),
+        }
+    }
+    Ok(BulkDeleteResult { deleted, failed })
 }
 
 #[tauri::command]

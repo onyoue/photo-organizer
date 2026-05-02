@@ -29,6 +29,7 @@ pub fn run() {
             commands::gallery::list_galleries,
             commands::gallery::fetch_gallery_feedback,
             commands::gallery::delete_gallery,
+            commands::gallery::delete_galleries_bulk,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
