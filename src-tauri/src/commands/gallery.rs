@@ -23,6 +23,10 @@ fn app_data_dir(app: &AppHandle) -> AppResult<PathBuf> {
 
 #[derive(Debug, Deserialize)]
 pub struct ShareGalleryArgs {
+    /// Absolute path of the folder these photos belong to. Per-photo
+    /// `source_path` values are resolved against this — same convention
+    /// as the thumbnail commands.
+    pub folder: String,
     pub name: String,
     pub expires_in_days: u32,
     pub default_decision: Decision,
@@ -32,7 +36,18 @@ pub struct ShareGalleryArgs {
 #[derive(Debug, Deserialize)]
 pub struct ShareGalleryPhoto {
     pub bundle_id: String,
+    /// File path; absolute paths are used as-is, relative paths are
+    /// resolved against `args.folder`.
     pub source_path: String,
+}
+
+fn resolve_photo_path(folder: &PathBuf, source_path: &str) -> PathBuf {
+    let raw = PathBuf::from(source_path);
+    if raw.is_absolute() {
+        raw
+    } else {
+        folder.join(raw)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -86,16 +101,20 @@ pub async fn share_gallery(
     let now = Utc::now();
     let expires_at = now + ChronoDuration::days(args.expires_in_days as i64);
 
+    let folder_path = PathBuf::from(&args.folder);
     let mut photo_records: Vec<GalleryPhotoRecord> = Vec::with_capacity(args.photos.len());
     let mut create_entries: Vec<CreatePhotoEntry> = Vec::with_capacity(args.photos.len());
 
     for (i, p) in args.photos.iter().enumerate() {
-        let path = PathBuf::from(&p.source_path);
-        let metadata = std::fs::metadata(&path).map_err(|e| {
-            AppError::InvalidArgument(format!("cannot stat {}: {e}", p.source_path))
+        let resolved = resolve_photo_path(&folder_path, &p.source_path);
+        let metadata = std::fs::metadata(&resolved).map_err(|e| {
+            AppError::InvalidArgument(format!(
+                "cannot stat {}: {e}",
+                resolved.display()
+            ))
         })?;
         let size = metadata.len();
-        let filename = path
+        let filename = resolved
             .file_name()
             .ok_or_else(|| {
                 AppError::InvalidArgument(format!("invalid path: {}", p.source_path))
@@ -108,7 +127,10 @@ pub async fn share_gallery(
         photo_records.push(GalleryPhotoRecord {
             pid: pid.clone(),
             bundle_id: p.bundle_id.clone(),
-            source_path: p.source_path.clone(),
+            // Persist the resolved absolute path so feedback retrieval
+            // doesn't depend on the gallery's source folder still being
+            // open.
+            source_path: resolved.to_string_lossy().to_string(),
             filename: filename.clone(),
             size,
             content_type: content_type.clone(),
@@ -133,6 +155,7 @@ pub async fn share_gallery(
     for (i, photo) in photo_records.iter().enumerate() {
         // Read each photo on the blocking pool — file size can be a few
         // MB and we don't want to stall the async runtime.
+        // photo.source_path is already resolved to an absolute path above.
         let path = PathBuf::from(&photo.source_path);
         let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(&path))
             .await

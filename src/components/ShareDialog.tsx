@@ -11,6 +11,7 @@ import type {
 import { selectPreviewFile } from "../utils/preview";
 
 interface Props {
+  folder: string;
   selectedBundles: BundleSummary[];
   defaultName: string;
   defaultDecision: Decision;
@@ -56,6 +57,7 @@ function resolveShareablePhotos(bundles: BundleSummary[]): {
 }
 
 export function ShareDialog({
+  folder,
   selectedBundles,
   defaultName,
   defaultDecision,
@@ -106,6 +108,7 @@ export function ShareDialog({
       unlistenRef.current = unlisten;
 
       const args: ShareGalleryArgs = {
+        folder,
         name: name.trim(),
         expires_in_days: days,
         default_decision: decision,

@@ -1387,6 +1387,7 @@ function App() {
 
       {showShare && index && (
         <ShareDialog
+          folder={index.folder_path}
           selectedBundles={index.bundles.filter((b) =>
             selectedIds.has(b.bundle_id),
           )}

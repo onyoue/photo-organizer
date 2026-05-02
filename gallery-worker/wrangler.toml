@@ -11,7 +11,7 @@ bucket_name = "photo-gallery"
 # Then paste the returned id here.
 [[kv_namespaces]]
 binding = "GALLERY_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "12b8ba67ba60403c95ddf44ccf1f4c01"
 
 # Set with: wrangler secret put ADMIN_TOKEN
 # (paired with the same value in the photo app's settings)

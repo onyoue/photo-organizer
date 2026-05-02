@@ -35,6 +35,8 @@ export interface ShareGalleryPhoto {
 }
 
 export interface ShareGalleryArgs {
+  /** Absolute folder path; per-photo source_path values are resolved against it. */
+  folder: string;
   name: string;
   expires_in_days: number;
   default_decision: Decision;
