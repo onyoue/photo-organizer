@@ -84,6 +84,7 @@ function App() {
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Auto-dismiss the toast after a few seconds.
   useEffect(() => {
@@ -91,7 +92,6 @@ function App() {
     const id = window.setTimeout(() => setToast(null), 4000);
     return () => window.clearTimeout(id);
   }, [toast]);
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // F1 hold-to-show keyboard cheatsheet overlay. Bound at window level so it
   // works regardless of focus, including while typing in the tag/post inputs.
@@ -486,10 +486,16 @@ function App() {
     (id: string, e: React.MouseEvent) => {
       if (!index) return;
       const meta = e.ctrlKey || e.metaKey;
-      if (e.shiftKey && anchorId) {
-        setSelectedIds(new Set(rangeIds(index.bundles, anchorId, id)));
+      if (e.shiftKey) {
+        // Range from anchor to clicked, restricted to what's currently
+        // visible. If there's no anchor yet (e.g., first click of the
+        // session was a Shift+click), seed it from the clicked tile so
+        // the next Shift+click extends a real range instead of being a
+        // no-op.
+        const anchor = anchorId ?? activeId ?? id;
+        setSelectedIds(new Set(rangeIds(filteredBundles, anchor, id)));
         setActiveId(id);
-        // anchorId stays — Shift extends from the same anchor on subsequent clicks.
+        if (!anchorId) setAnchorId(anchor);
       } else if (meta) {
         setSelectedIds((prev) => {
           const next = new Set(prev);
@@ -503,7 +509,7 @@ function App() {
         selectSingle(id);
       }
     },
-    [anchorId, index],
+    [activeId, anchorId, filteredBundles, index],
   );
 
   const navigateBy = useCallback(
