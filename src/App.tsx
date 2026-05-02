@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -92,6 +92,35 @@ function App() {
     const id = window.setTimeout(() => setToast(null), 4000);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+  // Backup modifier-key tracker. On at least some WebView2 builds the
+  // shift/ctrl flags on click events are not propagated, which makes
+  // Shift+click and Ctrl+click on tiles indistinguishable from a plain
+  // click. We mirror the modifier state via keydown/keyup so the tile
+  // click handler can OR in this state and still do the right thing.
+  // Also resets on window blur — alt-tabbing while a modifier was down
+  // would otherwise leave it stuck on.
+  const modKeysRef = useRef({ shift: false, ctrl: false, meta: false });
+  useEffect(() => {
+    const sync = (e: KeyboardEvent) => {
+      modKeysRef.current = {
+        shift: e.shiftKey,
+        ctrl: e.ctrlKey,
+        meta: e.metaKey,
+      };
+    };
+    const reset = () => {
+      modKeysRef.current = { shift: false, ctrl: false, meta: false };
+    };
+    window.addEventListener("keydown", sync);
+    window.addEventListener("keyup", sync);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("keydown", sync);
+      window.removeEventListener("keyup", sync);
+      window.removeEventListener("blur", reset);
+    };
+  }, []);
 
   // F1 hold-to-show keyboard cheatsheet overlay. Bound at window level so it
   // works regardless of focus, including while typing in the tag/post inputs.
@@ -485,8 +514,12 @@ function App() {
   const handleTileClick = useCallback(
     (id: string, e: React.MouseEvent) => {
       if (!index) return;
-      const meta = e.ctrlKey || e.metaKey;
-      if (e.shiftKey) {
+      // Some WebView2 builds drop the modifier-key flags on synthetic
+      // click events, so we OR in the keydown-tracked state.
+      const mk = modKeysRef.current;
+      const isShift = e.shiftKey || mk.shift;
+      const meta = e.ctrlKey || e.metaKey || mk.ctrl || mk.meta;
+      if (isShift) {
         // Range from anchor to clicked, restricted to what's currently
         // visible. If there's no anchor yet (e.g., first click of the
         // session was a Shift+click), seed it from the clicked tile so
