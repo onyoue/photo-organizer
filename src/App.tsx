@@ -7,7 +7,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BundleRef, BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
-import type { BundleSidecar, Flag, PostRecord } from "./types/sidecar";
+import type { BundleSidecar, PostRecord } from "./types/sidecar";
 import type { AppSettings } from "./types/settings";
 import type {
   GalleryFeedbackEntry,
@@ -899,50 +899,6 @@ function App() {
     [activeBundle, index],
   );
 
-  const toggleFlagForSelection = useCallback(
-    async (target: Flag) => {
-      if (!index || selectedIds.size === 0 || busy) return;
-      // Toggle decision pivots on the active bundle: if it's already flagged
-      // with `target`, we clear; otherwise we set everyone to `target`.
-      // Mirrors Lightroom's P/X behaviour.
-      const newFlag: Flag | null =
-        activeBundle?.flag === target ? null : target;
-      const refs = selectedBundleRefs();
-      if (refs.length === 0) return;
-      try {
-        await invoke("set_bundle_flag", {
-          folder: index.folder_path,
-          bundles: refs,
-          flag: newFlag,
-        });
-        const flagValue = newFlag ?? undefined;
-        setIndex((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            bundles: prev.bundles.map((b) =>
-              selectedIds.has(b.bundle_id) ? { ...b, flag: flagValue } : b,
-            ),
-          };
-        });
-        if (activeBundle && selectedIds.has(activeBundle.bundle_id)) {
-          setActiveSidecar((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  flag: flagValue,
-                  updated_at: new Date().toISOString(),
-                }
-              : prev,
-          );
-        }
-      } catch (e: unknown) {
-        setError(toMessage(e));
-      }
-    },
-    [activeBundle, busy, index, selectedBundleRefs, selectedIds],
-  );
-
   const applyGalleryFeedback = useCallback(
     async (gid: string, entries: GalleryFeedbackEntry[]): Promise<ApplyResult> => {
       void gid;
@@ -1257,16 +1213,9 @@ function App() {
           e.preventDefault();
           void setRatingForSelection(parseInt(e.key, 10));
           break;
-        case "p":
-        case "P":
-          e.preventDefault();
-          void toggleFlagForSelection("pick");
-          break;
-        case "x":
-        case "X":
-          e.preventDefault();
-          void toggleFlagForSelection("reject");
-          break;
+        // Pick/Reject flags are now driven exclusively by gallery feedback
+        // (FAV → pick, NG → reject) — local P/X toggles were removed so a
+        // photographer keystroke can't silently overwrite a model's vote.
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1287,7 +1236,6 @@ function App() {
     cyclePreviewVariant,
     trashCurrentVariant,
     setRatingForSelection,
-    toggleFlagForSelection,
   ]);
 
   const selectedDevelopedCount = useMemo(() => {
@@ -1487,7 +1435,6 @@ function App() {
               onDeletePost={deletePost}
               onOpenUrl={handleOpenUrl}
               onSetRating={setRatingForSelection}
-              onToggleFlag={toggleFlagForSelection}
               onSetTags={setTagsForActive}
               currentPreviewPath={currentPreviewVariant?.path ?? null}
               onSelectPreview={selectPreviewByPath}

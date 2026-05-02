@@ -1,5 +1,5 @@
 import type { BundleSummary } from "../types/bundle";
-import type { BundleSidecar, Flag, PostRecord } from "../types/sidecar";
+import type { BundleSidecar, PostRecord } from "../types/sidecar";
 import { formatSize } from "../utils/format";
 import { PostsSection } from "./PostsSection";
 import { TagsSection } from "./TagsSection";
@@ -29,7 +29,6 @@ interface Props {
   onOpenUrl: (url: string) => void;
 
   onSetRating: (rating: number | null) => void;
-  onToggleFlag: (target: Flag) => void;
 
   onSetTags: (tags: string[]) => void;
 
@@ -67,7 +66,6 @@ export function DetailPanel({
   onDeletePost,
   onOpenUrl,
   onSetRating,
-  onToggleFlag,
   onSetTags,
   currentPreviewPath,
   onSelectPreview,
@@ -192,26 +190,16 @@ export function DetailPanel({
             ×
           </button>
         </div>
-        <div className="flag-toggles" role="group" aria-label="Flag">
-          <button
-            type="button"
-            className={`flag-btn pick${bundle.flag === "pick" ? " active" : ""}`}
-            onClick={() => onToggleFlag("pick")}
-            disabled={busy}
-            title="Toggle pick — press P"
+        {bundle.flag && (
+          <div
+            className={`flag-readout flag-${bundle.flag}`}
+            role="status"
+            aria-label="Flag (model feedback)"
+            title="Flags come from gallery feedback — FAV → pick, NG → reject"
           >
-            ✓ Pick
-          </button>
-          <button
-            type="button"
-            className={`flag-btn reject${bundle.flag === "reject" ? " active" : ""}`}
-            onClick={() => onToggleFlag("reject")}
-            disabled={busy}
-            title="Toggle reject — press X"
-          >
-            ✕ Reject
-          </button>
-        </div>
+            {bundle.flag === "pick" ? "✓ Pick" : "✕ Reject"}
+          </div>
+        )}
       </div>
 
       <ul className="detail-files">

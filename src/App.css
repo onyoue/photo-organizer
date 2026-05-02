@@ -1244,33 +1244,22 @@ html,
   cursor: not-allowed;
 }
 
-.flag-toggles {
-  display: inline-flex;
-  gap: 4px;
-}
-
-.flag-btn {
+.flag-readout {
+  display: inline-block;
   padding: 3px 10px;
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid #c0c0c0;
   border-radius: 3px;
-  background: #ffffff;
-  cursor: pointer;
+  border: 1px solid transparent;
 }
 
-.flag-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.flag-btn.pick.active {
+.flag-readout.flag-pick {
   background: #2a8a2a;
   color: #ffffff;
   border-color: #2a8a2a;
 }
 
-.flag-btn.reject.active {
+.flag-readout.flag-reject {
   background: #c44444;
   color: #ffffff;
   border-color: #c44444;
@@ -1779,7 +1768,6 @@ html,
   .topbar-icon,
   .size-selector button,
   .detail-actions button,
-  .flag-btn,
   .filter-chip {
     background: #2a2a2a;
     color: #e8e8e8;

@@ -1,8 +1,39 @@
-use std::path::PathBuf;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use crate::core::sidecar::{self as sidecar_io, BundleRef};
+use crate::core::index_cache;
 use crate::error::{AppError, AppResult};
+use crate::models::bundle::BundleSummary;
 use crate::models::sidecar::{BundleSidecar, Flag};
+
+/// Mutate the cached folder index in place after a sidecar update so the
+/// next folder open doesn't have to depend on the OS bumping the folder's
+/// mtime to invalidate the cache (NTFS in particular can be flaky here).
+/// No-op if the cache file doesn't exist yet — next scan will build it
+/// fresh anyway.
+fn patch_cache_for_bundles<F>(
+    folder: &Path,
+    bundles: &[BundleRef],
+    mut patch: F,
+) -> AppResult<()>
+where
+    F: FnMut(&mut BundleSummary),
+{
+    let Some(mut cached) = index_cache::read(folder) else { return Ok(()) };
+    let ids: HashSet<&str> = bundles.iter().map(|b| b.bundle_id.as_str()).collect();
+    let mut touched = false;
+    for b in &mut cached.bundles {
+        if ids.contains(b.bundle_id.as_str()) {
+            patch(b);
+            touched = true;
+        }
+    }
+    if touched {
+        index_cache::write(folder, &cached)?;
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn get_bundle_sidecar(
@@ -44,10 +75,11 @@ pub async fn set_bundle_rating(
         }
     }
     let folder = PathBuf::from(folder);
-    tauri::async_runtime::spawn_blocking(move || {
-        for b in bundles {
-            sidecar_io::apply_rating(&folder, &b, rating)?;
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
+        for b in &bundles {
+            sidecar_io::apply_rating(&folder, b, rating)?;
         }
+        patch_cache_for_bundles(&folder, &bundles, |b| b.rating = rating)?;
         Ok(())
     })
     .await
@@ -61,10 +93,11 @@ pub async fn set_bundle_flag(
     flag: Option<Flag>,
 ) -> AppResult<()> {
     let folder = PathBuf::from(folder);
-    tauri::async_runtime::spawn_blocking(move || {
-        for b in bundles {
-            sidecar_io::apply_flag(&folder, &b, flag)?;
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
+        for b in &bundles {
+            sidecar_io::apply_flag(&folder, b, flag)?;
         }
+        patch_cache_for_bundles(&folder, &bundles, |b| b.flag = flag)?;
         Ok(())
     })
     .await
@@ -78,10 +111,11 @@ pub async fn set_bundle_tags(
     tags: Vec<String>,
 ) -> AppResult<()> {
     let folder = PathBuf::from(folder);
-    tauri::async_runtime::spawn_blocking(move || {
-        for b in bundles {
-            sidecar_io::apply_tags(&folder, &b, tags.clone())?;
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
+        for b in &bundles {
+            sidecar_io::apply_tags(&folder, b, tags.clone())?;
         }
+        patch_cache_for_bundles(&folder, &bundles, |b| b.tags = tags.clone())?;
         Ok(())
     })
     .await
