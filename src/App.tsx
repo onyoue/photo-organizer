@@ -9,9 +9,11 @@ import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/th
 import type { PixelOffset, PreviewMode } from "./types/preview";
 import type { BundleSidecar, Flag, PostRecord } from "./types/sidecar";
 import type { AppSettings } from "./types/settings";
+import type { GalleryFeedbackEntry } from "./types/gallery";
 import { generatePostId } from "./components/PostsSection";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShareDialog } from "./components/ShareDialog";
+import { GalleriesDialog, type ApplyResult } from "./components/GalleriesDialog";
 import { CheatsheetOverlay } from "./components/CheatsheetOverlay";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
@@ -75,6 +77,7 @@ function App() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showGalleries, setShowGalleries] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
@@ -889,6 +892,94 @@ function App() {
     [activeBundle, busy, index, selectedBundleRefs, selectedIds],
   );
 
+  const applyGalleryFeedback = useCallback(
+    async (gid: string, entries: GalleryFeedbackEntry[]): Promise<ApplyResult> => {
+      void gid;
+      if (!index) {
+        return {
+          applied: 0,
+          notInCurrentFolder: entries.length,
+          agreedWithDefault: 0,
+        };
+      }
+
+      // Look up the gallery's default so we can skip "agreed with default"
+      // entries — the actionable feedback is what differs from the default.
+      const galleries = await invoke<
+        import("./types/gallery").GalleryRecord[]
+      >("list_galleries");
+      const gallery = galleries.find((g) => g.gid === gid);
+      const defaultDecision = gallery?.default_decision ?? "ok";
+
+      let agreedWithDefault = 0;
+      let notInCurrentFolder = 0;
+
+      const bundlesById = new Map(
+        index.bundles.map((b) => [b.bundle_id, b]),
+      );
+      const okRefs: BundleRef[] = [];
+      const ngRefs: BundleRef[] = [];
+
+      for (const e of entries) {
+        if (!e.explicit) {
+          // Inherits default → no actionable feedback.
+          continue;
+        }
+        if (e.decision === defaultDecision) {
+          agreedWithDefault++;
+          continue;
+        }
+        const bundle = bundlesById.get(e.bundle_id);
+        if (!bundle) {
+          notInCurrentFolder++;
+          continue;
+        }
+        const ref: BundleRef = {
+          bundle_id: bundle.bundle_id,
+          base_name: bundle.base_name,
+        };
+        if (e.decision === "ok") okRefs.push(ref);
+        else ngRefs.push(ref);
+      }
+
+      if (okRefs.length > 0) {
+        await invoke("set_bundle_flag", {
+          folder: index.folder_path,
+          bundles: okRefs,
+          flag: "pick",
+        });
+      }
+      if (ngRefs.length > 0) {
+        await invoke("set_bundle_flag", {
+          folder: index.folder_path,
+          bundles: ngRefs,
+          flag: "reject",
+        });
+      }
+
+      const okIds = new Set(okRefs.map((r) => r.bundle_id));
+      const ngIds = new Set(ngRefs.map((r) => r.bundle_id));
+      setIndex((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          bundles: prev.bundles.map((b) => {
+            if (okIds.has(b.bundle_id)) return { ...b, flag: "pick" };
+            if (ngIds.has(b.bundle_id)) return { ...b, flag: "reject" };
+            return b;
+          }),
+        };
+      });
+
+      return {
+        applied: okRefs.length + ngRefs.length,
+        notInCurrentFolder,
+        agreedWithDefault,
+      };
+    },
+    [index],
+  );
+
   const handleOpenUrl = useCallback(async (url: string) => {
     try {
       await openUrl(url);
@@ -1147,6 +1238,14 @@ function App() {
         <button
           type="button"
           className="topbar-icon"
+          onClick={() => setShowGalleries(true)}
+          title="Shared galleries"
+        >
+          🔗
+        </button>
+        <button
+          type="button"
+          className="topbar-icon"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >
@@ -1296,6 +1395,13 @@ function App() {
           } ${new Date().toISOString().slice(0, 10)}`}
           defaultDecision={appSettings.gallery?.default_decision ?? "ok"}
           onClose={() => setShowShare(false)}
+        />
+      )}
+
+      {showGalleries && (
+        <GalleriesDialog
+          onClose={() => setShowGalleries(false)}
+          onApplyFeedback={applyGalleryFeedback}
         />
       )}
 

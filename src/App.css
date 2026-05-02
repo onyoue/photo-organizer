@@ -358,9 +358,102 @@ html,
   cursor: pointer;
 }
 
-.share-dialog {
-  width: 480px;
+.share-dialog,
+.galleries-dialog {
+  width: 540px;
   max-width: calc(100vw - 32px);
+}
+
+.galleries-body {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.gallery-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gallery-item {
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fafafa;
+}
+
+.gallery-row-1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.gallery-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gallery-expiry {
+  font-size: 11px;
+  color: #777;
+  white-space: nowrap;
+}
+
+.gallery-row-2 {
+  display: flex;
+}
+
+.gallery-url {
+  flex: 1;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  background: #f0f0f0;
+  border: 1px solid #d8d8d8;
+  border-radius: 3px;
+  padding: 4px 6px;
+  user-select: text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gallery-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.gallery-actions button {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.gallery-actions .gallery-delete {
+  margin-left: auto;
+  color: #a01515;
+  border-color: #d8b0b0;
+}
+
+.gallery-status {
+  font-size: 11px;
+  color: #2a6c2a;
+  background: #ecf6ec;
+  border-radius: 3px;
+  padding: 4px 6px;
 }
 
 .share-name-input,
@@ -1636,6 +1729,28 @@ html,
     background: #1a1a1a;
     color: #e8e8e8;
     border-color: #4a4a4a;
+  }
+  .gallery-item {
+    background: #1f1f1f;
+    border-color: #3a3a3a;
+  }
+  .gallery-url {
+    background: #161616;
+    color: #d0d0d0;
+    border-color: #3a3a3a;
+  }
+  .gallery-actions button {
+    background: #1f1f1f;
+    color: #e8e8e8;
+    border-color: #4a4a4a;
+  }
+  .gallery-actions .gallery-delete {
+    color: #ff7a7a;
+    border-color: #6a3030;
+  }
+  .gallery-status {
+    background: #1a3322;
+    color: #b0e0b0;
   }
   .raw-dev-add {
     background: transparent;
