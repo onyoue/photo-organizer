@@ -3,7 +3,7 @@ export interface RawDeveloperEntry {
   path: string;
 }
 
-export type Decision = "ok" | "ng";
+export type Decision = "ok" | "ng" | "fav";
 
 export interface GallerySettings {
   worker_url?: string;

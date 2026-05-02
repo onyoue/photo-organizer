@@ -12,13 +12,13 @@ interface InlineManifest {
   expires_at: string;
   default_decision: "ok" | "ng";
   photos: { pid: string; filename: string }[];
-  decisions: Record<string, "ok" | "ng">;
+  decisions: Record<string, "ok" | "ng" | "fav">;
 }
 
 export function renderGalleryHtml(
   gid: string,
   meta: GalleryMeta,
-  decisions: Record<string, "ok" | "ng">,
+  decisions: Record<string, "ok" | "ng" | "fav">,
 ): string {
   const manifest: InlineManifest = {
     name: meta.name,
@@ -61,6 +61,7 @@ export function renderGalleryHtml(
     <div class="lb-actions">
       <button class="dec ok" id="decOk">✓ OK</button>
       <button class="dec ng" id="decNg">× NG</button>
+      <button class="dec fav" id="decFav">★ FAV</button>
     </div>
   </div>
   <button class="nav prev" id="lbPrev" aria-label="前へ">‹</button>
@@ -110,6 +111,7 @@ header .meta #dl:active{background:#234}
 .tile .badge{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);box-shadow:0 1px 2px rgba(0,0,0,.4)}
 .tile .badge[data-d="ok"]{background:#0a7d3a}
 .tile .badge[data-d="ng"]{background:#a8261c}
+.tile .badge[data-d="fav"]{background:#c08a00}
 .tile.is-default .badge{opacity:.55}
 .lb{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column}
 .lb[hidden]{display:none}
@@ -123,8 +125,10 @@ header .meta #dl:active{background:#234}
 .dec:active{transform:scale(.97)}
 .dec.ok{border-color:#0a7d3a}
 .dec.ng{border-color:#a8261c}
+.dec.fav{border-color:#c08a00}
 .dec.ok.active{background:#0a7d3a;color:#fff}
 .dec.ng.active{background:#a8261c;color:#fff}
+.dec.fav.active{background:#c08a00;color:#fff}
 .nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:0;background:rgba(0,0,0,.5);color:#fff;font-size:32px;cursor:pointer;z-index:1;display:flex;align-items:center;justify-content:center}
 .nav.prev{left:8px}
 .nav.next{right:8px}
@@ -136,7 +140,7 @@ const JS = `(function(){
 const G=window.__G__;
 const $=id=>document.getElementById(id);
 const grid=$("grid"),lb=$("lb"),lbImg=$("lbImg"),lbMeta=$("lbMeta"),lbPrev=$("lbPrev"),lbNext=$("lbNext"),lbClose=$("lbClose"),lbStage=$("lbStage");
-const decOk=$("decOk"),decNg=$("decNg");
+const decOk=$("decOk"),decNg=$("decNg"),decFav=$("decFav");
 const info=$("info"),hint=$("hint");
 const photos=G.photos,decisions=G.decisions||{},def=G.default_decision;
 const photoUrl=p=>"/"+G.gid+"/p/"+p.pid;
@@ -151,10 +155,11 @@ hint.textContent="タップして拡大、　"+(def==="ok"?"すべて初期 OK":
 // ---------- grid ----------
 function decisionFor(pid){return decisions[pid]||def;}
 function isDefault(pid){return !decisions[pid];}
+function decisionGlyph(d){return d==="ok"?"✓":d==="ng"?"✕":"★";}
 function renderGrid(){
   grid.innerHTML=photos.map((p,i)=>{
     const d=decisionFor(p.pid),defCls=isDefault(p.pid)?"is-default":"";
-    return '<button class="tile '+defCls+'" data-i="'+i+'" type="button"><img src="'+photoUrl(p)+'" alt="" loading="lazy"><span class="badge" data-d="'+d+'">'+(d==="ok"?"✓":"✕")+'</span></button>';
+    return '<button class="tile '+defCls+'" data-i="'+i+'" type="button"><img src="'+photoUrl(p)+'" alt="" loading="lazy"><span class="badge" data-d="'+d+'">'+decisionGlyph(d)+'</span></button>';
   }).join("");
 }
 renderGrid();
@@ -181,6 +186,7 @@ function paintDec(pid){
   const d=decisionFor(pid);
   decOk.classList.toggle("active",d==="ok");
   decNg.classList.toggle("active",d==="ng");
+  decFav.classList.toggle("active",d==="fav");
 }
 function setDecision(pid,d){
   // Tapping the already-active button clears back to default.
@@ -202,7 +208,7 @@ function updateTileBadge(pid){
   const badge=tile.querySelector(".badge");
   const d=decisionFor(pid);
   badge.dataset.d=d;
-  badge.textContent=d==="ok"?"✓":"✕";
+  badge.textContent=decisionGlyph(d);
   tile.classList.toggle("is-default",isDefault(pid));
 }
 function post(pid,decision){
@@ -217,6 +223,7 @@ lbPrev.addEventListener("click",()=>{if(cur>0){cur--;updateLightbox();}});
 lbNext.addEventListener("click",()=>{if(cur<photos.length-1){cur++;updateLightbox();}});
 decOk.addEventListener("click",()=>setDecision(photos[cur].pid,"ok"));
 decNg.addEventListener("click",()=>setDecision(photos[cur].pid,"ng"));
+decFav.addEventListener("click",()=>setDecision(photos[cur].pid,"fav"));
 
 // keyboard (desktop convenience)
 document.addEventListener("keydown",e=>{
@@ -226,6 +233,7 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="ArrowRight"&&cur<photos.length-1){cur++;updateLightbox();}
   else if(e.key==="o"||e.key==="O")setDecision(photos[cur].pid,"ok");
   else if(e.key==="x"||e.key==="X")setDecision(photos[cur].pid,"ng");
+  else if(e.key==="f"||e.key==="F")setDecision(photos[cur].pid,"fav");
 });
 
 // swipe

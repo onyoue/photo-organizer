@@ -1,5 +1,6 @@
 import type {
   CreateGalleryBody,
+  DefaultDecision,
   Decision,
   Env,
   FeedbackResponse,
@@ -62,7 +63,7 @@ async function createGallery(req: Request, env: Env, gid: string): Promise<Respo
   if (typeof body.name !== "string" || !body.name.trim()) {
     return badRequest("name required");
   }
-  if (!isValidDecision(body.default_decision)) {
+  if (!isValidDefaultDecision(body.default_decision)) {
     return badRequest("default_decision must be 'ok' or 'ng'");
   }
   const expiresAt = Date.parse(body.expires_at);
@@ -166,7 +167,7 @@ async function getFeedback(env: Env, gid: string): Promise<Response> {
     for (const k of page.keys) {
       const pid = k.name.slice(kvPrefixForFeedback(gid).length);
       const v = await env.GALLERY_KV.get(k.name);
-      if (v === "ok" || v === "ng") decisions[pid] = v;
+      if (v === "ok" || v === "ng" || v === "fav") decisions[pid] = v;
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
@@ -214,7 +215,7 @@ async function loadMeta(env: Env, gid: string): Promise<GalleryMeta | null> {
   }
 }
 
-function isValidDecision(v: unknown): v is Decision {
+function isValidDefaultDecision(v: unknown): v is DefaultDecision {
   return v === "ok" || v === "ng";
 }
 

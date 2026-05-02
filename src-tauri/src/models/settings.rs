@@ -6,11 +6,15 @@ pub struct RawDeveloperEntry {
     pub path: String,
 }
 
+/// Per-photo verdict from the gallery viewer. `Fav` is an explicit
+/// "I love this one" signal layered on top of the binary OK/NG —
+/// only valid as a per-photo decision, never as a gallery default.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Decision {
     Ok,
     Ng,
+    Fav,
 }
 
 impl Default for Decision {

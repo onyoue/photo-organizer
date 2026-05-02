@@ -1,4 +1,4 @@
-import type { Decision, Env, GalleryMeta } from "./types";
+import type { Decision, DefaultDecision, Env, GalleryMeta } from "./types";
 import {
   GID_RE,
   PID_RE,
@@ -24,14 +24,14 @@ interface PublicPhoto {
 interface PublicManifest {
   name: string;
   expires_at: string;
-  default_decision: Decision;
+  default_decision: DefaultDecision;
   photos: PublicPhoto[];
   decisions: Record<string, Decision>;
 }
 
 interface FeedbackBody {
   pid: string;
-  decision: "ok" | "ng" | "clear";
+  decision: "ok" | "ng" | "fav" | "clear";
 }
 
 export async function handlePublic(
@@ -86,7 +86,7 @@ async function loadDecisions(
     for (const k of page.keys) {
       const pid = k.name.slice(kvPrefixForFeedback(gid).length);
       const v = await env.GALLERY_KV.get(k.name);
-      if (v === "ok" || v === "ng") decisions[pid] = v;
+      if (v === "ok" || v === "ng" || v === "fav") decisions[pid] = v;
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
@@ -142,8 +142,13 @@ async function setFeedback(
   if (!meta.photos.some((p) => p.pid === body.pid)) {
     return badRequest("unknown pid");
   }
-  if (body.decision !== "ok" && body.decision !== "ng" && body.decision !== "clear") {
-    return badRequest("decision must be ok, ng, or clear");
+  if (
+    body.decision !== "ok" &&
+    body.decision !== "ng" &&
+    body.decision !== "fav" &&
+    body.decision !== "clear"
+  ) {
+    return badRequest("decision must be ok, ng, fav, or clear");
   }
 
   const key = kvKeyForFeedback(gid, body.pid);

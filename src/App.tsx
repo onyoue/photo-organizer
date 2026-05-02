@@ -898,38 +898,31 @@ function App() {
       if (!index) {
         return {
           applied: 0,
-          notInCurrentFolder: entries.length,
+          notInCurrentFolder: new Set(entries.map((e) => e.bundle_id)).size,
           agreedWithDefault: 0,
         };
       }
 
-      // Look up the gallery's default so we can skip "agreed with default"
-      // entries — the actionable feedback is what differs from the default.
-      const galleries = await invoke<
-        import("./types/gallery").GalleryRecord[]
-      >("list_galleries");
-      const gallery = galleries.find((g) => g.gid === gid);
-      const defaultDecision = gallery?.default_decision ?? "ok";
-
       let agreedWithDefault = 0;
       let notInCurrentFolder = 0;
+
+      // Group per bundle — each bundle now has multiple variant entries
+      // and we collapse them into a single flag for the bundle.
+      const byBundle = new Map<string, GalleryFeedbackEntry[]>();
+      for (const e of entries) {
+        const arr = byBundle.get(e.bundle_id) ?? [];
+        arr.push(e);
+        byBundle.set(e.bundle_id, arr);
+      }
 
       const bundlesById = new Map(
         index.bundles.map((b) => [b.bundle_id, b]),
       );
-      const okRefs: BundleRef[] = [];
-      const ngRefs: BundleRef[] = [];
+      const pickRefs: BundleRef[] = [];
+      const rejectRefs: BundleRef[] = [];
 
-      for (const e of entries) {
-        if (!e.explicit) {
-          // Inherits default → no actionable feedback.
-          continue;
-        }
-        if (e.decision === defaultDecision) {
-          agreedWithDefault++;
-          continue;
-        }
-        const bundle = bundlesById.get(e.bundle_id);
+      for (const [bundleId, group] of byBundle) {
+        const bundle = bundlesById.get(bundleId);
         if (!bundle) {
           notInCurrentFolder++;
           continue;
@@ -938,41 +931,59 @@ function App() {
           bundle_id: bundle.bundle_id,
           base_name: bundle.base_name,
         };
-        if (e.decision === "ok") okRefs.push(ref);
-        else ngRefs.push(ref);
+
+        // Aggregate variant decisions into a bundle-level signal:
+        //   any FAV → pick (model loves at least one variant)
+        //   all explicit are NG → reject (model rejects every variant)
+        //   anything else (mix, all-default, default-agreement) → no change
+        const explicitDecisions = group
+          .filter((e) => e.explicit)
+          .map((e) => e.decision);
+        const hasFav = explicitDecisions.includes("fav");
+        const allExplicitAreNg =
+          explicitDecisions.length > 0 &&
+          explicitDecisions.every((d) => d === "ng");
+
+        if (hasFav) {
+          pickRefs.push(ref);
+        } else if (allExplicitAreNg) {
+          rejectRefs.push(ref);
+        } else {
+          agreedWithDefault++;
+        }
       }
 
-      if (okRefs.length > 0) {
+      if (pickRefs.length > 0) {
         await invoke("set_bundle_flag", {
           folder: index.folder_path,
-          bundles: okRefs,
+          bundles: pickRefs,
           flag: "pick",
         });
       }
-      if (ngRefs.length > 0) {
+      if (rejectRefs.length > 0) {
         await invoke("set_bundle_flag", {
           folder: index.folder_path,
-          bundles: ngRefs,
+          bundles: rejectRefs,
           flag: "reject",
         });
       }
 
-      const okIds = new Set(okRefs.map((r) => r.bundle_id));
-      const ngIds = new Set(ngRefs.map((r) => r.bundle_id));
+      const pickIds = new Set(pickRefs.map((r) => r.bundle_id));
+      const rejectIds = new Set(rejectRefs.map((r) => r.bundle_id));
       setIndex((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
           bundles: prev.bundles.map((b) => {
-            if (okIds.has(b.bundle_id)) return { ...b, flag: "pick" };
-            if (ngIds.has(b.bundle_id)) return { ...b, flag: "reject" };
+            if (pickIds.has(b.bundle_id)) return { ...b, flag: "pick" };
+            if (rejectIds.has(b.bundle_id)) return { ...b, flag: "reject" };
             return b;
           }),
         };
       });
 
       return {
-        applied: okRefs.length + ngRefs.length,
+        applied: pickRefs.length + rejectRefs.length,
         notInCurrentFolder,
         agreedWithDefault,
       };
