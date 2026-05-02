@@ -30,11 +30,3 @@ pub struct GalleryRecord {
     pub photos: Vec<GalleryPhotoRecord>,
 }
 
-impl GalleryRecord {
-    pub fn is_expired(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
-        match chrono::DateTime::parse_from_rfc3339(&self.expires_at) {
-            Ok(t) => t.with_timezone(&chrono::Utc) <= now,
-            Err(_) => true,
-        }
-    }
-}

@@ -25,6 +25,10 @@ pub fn run() {
             commands::settings::save_app_settings,
             commands::settings::open_with_raw_developer,
             commands::settings::cycle_active_raw_developer,
+            commands::gallery::share_gallery,
+            commands::gallery::list_galleries,
+            commands::gallery::fetch_gallery_feedback,
+            commands::gallery::delete_gallery,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
