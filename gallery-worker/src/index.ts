@@ -10,27 +10,23 @@
  *   GET    /                           liveness probe
  *
  *   --- admin (Bearer ADMIN_TOKEN) ----------------------------------
- *   POST   /admin/gallery              create gallery from JSON body
- *   PUT    /admin/<gid>/photos/<pid>   upload photo (body=bytes, X-Filename header)
- *   POST   /admin/<gid>/finalize       mark gallery ready for viewing
- *   GET    /admin/<gid>/feedback       aggregated per-photo decisions
- *   DELETE /admin/<gid>                delete gallery + all photos
+ *   PUT    /admin/<gid>                create gallery (JSON body)
+ *   PUT    /admin/<gid>/photos/<pid>   upload photo bytes
+ *   POST   /admin/<gid>/finalize       mark gallery viewable
+ *   GET    /admin/<gid>/feedback       aggregated decisions
+ *   DELETE /admin/<gid>                delete gallery + photos
  *
  *   --- public ------------------------------------------------------
  *   GET    /<gid>                      mobile gallery HTML
  *   GET    /<gid>/manifest             gallery + photo list as JSON
  *   GET    /<gid>/p/<pid>              photo bytes (R2 proxy, expiry-checked)
  *   GET    /<gid>/zip                  ZIP stream of all photos
- *   POST   /<gid>/feedback             record a decision (per-tap)
+ *   POST   /<gid>/feedback             record a decision
  */
 
-export interface Env {
-  GALLERY_BUCKET: R2Bucket;
-  GALLERY_KV: KVNamespace;
-  ADMIN_TOKEN: string;
-}
-
-const GID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/; // ULID alphabet
+import { handleAdmin } from "./admin";
+import type { Env } from "./types";
+import { notFound, text } from "./util";
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -41,56 +37,25 @@ export default {
       return text("photo-gallery", 200);
     }
 
-    if (path.startsWith("/admin/")) {
+    const segs = path.split("/").filter(Boolean);
+
+    if (segs[0] === "admin") {
       const provided = req.headers.get("Authorization");
       if (provided !== `Bearer ${env.ADMIN_TOKEN}`) {
         return text("Unauthorized", 401);
       }
-      return handleAdmin(req, env, path);
+      return handleAdmin(req, env, segs);
     }
 
-    return handlePublic(req, env, path);
+    return handlePublic(req, env, segs);
   },
 } satisfies ExportedHandler<Env>;
 
-// ---------- admin -----------------------------------------------------------
-
-async function handleAdmin(req: Request, _env: Env, path: string): Promise<Response> {
-  // TODO: dispatch to per-route handlers
-  // POST   /admin/gallery
-  // PUT    /admin/<gid>/photos/<pid>
-  // POST   /admin/<gid>/finalize
-  // GET    /admin/<gid>/feedback
-  // DELETE /admin/<gid>
-  void req;
-  void path;
-  return text("admin not implemented", 501);
-}
-
-// ---------- public ----------------------------------------------------------
-
-async function handlePublic(req: Request, _env: Env, path: string): Promise<Response> {
-  const segs = path.split("/").filter(Boolean);
-  if (segs.length === 0) return text("Not Found", 404);
-
-  const gid = segs[0];
-  if (!GID_RE.test(gid)) return text("Not Found", 404);
-
-  // TODO: dispatch to per-route handlers
-  // GET  /<gid>
-  // GET  /<gid>/manifest
-  // GET  /<gid>/p/<pid>
-  // GET  /<gid>/zip
-  // POST /<gid>/feedback
+async function handlePublic(req: Request, _env: Env, segs: string[]): Promise<Response> {
+  if (segs.length === 0) return notFound();
+  // TODO: dispatch public routes.
   void req;
   return text("public not implemented", 501);
 }
 
-// ---------- helpers ---------------------------------------------------------
-
-function text(body: string, status: number): Response {
-  return new Response(body, {
-    status,
-    headers: { "content-type": "text/plain; charset=utf-8" },
-  });
-}
+export type { Env };
