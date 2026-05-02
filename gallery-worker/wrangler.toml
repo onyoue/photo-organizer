@@ -1,0 +1,19 @@
+name = "photo-gallery"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+
+# R2 bucket — create with: wrangler r2 bucket create photo-gallery
+[[r2_buckets]]
+binding = "GALLERY_BUCKET"
+bucket_name = "photo-gallery"
+
+# KV namespace — create with: wrangler kv namespace create GALLERY_KV
+# Then paste the returned id here.
+[[kv_namespaces]]
+binding = "GALLERY_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Set with: wrangler secret put ADMIN_TOKEN
+# (paired with the same value in the photo app's settings)
+[vars]
+# ADMIN_TOKEN is intentionally NOT a [vars] entry — use `wrangler secret put`.
