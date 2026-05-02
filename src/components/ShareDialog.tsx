@@ -8,7 +8,7 @@ import type {
   ShareGalleryResult,
   ShareProgressEvent,
 } from "../types/gallery";
-import { selectPreviewFile } from "../utils/preview";
+import { previewVariants } from "../utils/preview";
 
 interface Props {
   folder: string;
@@ -45,16 +45,22 @@ function resolveShareablePhotos(bundles: BundleSummary[]): {
   const photos: ShareablePhoto[] = [];
   const excluded: BundleSummary[] = [];
   for (const b of bundles) {
-    const path = selectPreviewFile(b);
-    if (!path) {
+    const variants = previewVariants(b);
+    if (variants.length === 0) {
       excluded.push(b);
       continue;
     }
-    photos.push({
-      bundle_id: b.bundle_id,
-      source_path: path,
-      filename: basename(path),
-    });
+    // Send every renderable JPG/PNG variant — model can compare colour
+    // grades and per-variant feedback comes back so the apply step can
+    // pick the right action (any FAV → pick, all-NG → reject, mixed
+    // → no change). previewVariants is already ordered newest-first.
+    for (const v of variants) {
+      photos.push({
+        bundle_id: b.bundle_id,
+        source_path: v.path,
+        filename: basename(v.path),
+      });
+    }
   }
   return { photos, excluded };
 }
@@ -228,7 +234,8 @@ export function ShareDialog({
               <div className="settings-field">
                 <label>対象写真</label>
                 <p className="settings-hint">
-                  {photos.length} 枚をアップロードします。
+                  {selectedBundles.length - excluded.length} バンドル ×
+                  バリエーション = {photos.length} 枚をアップロードします。
                   {excluded.length > 0 &&
                     ` （現像済みJPG/PNGがない ${excluded.length} 件は対象外）`}
                 </p>
