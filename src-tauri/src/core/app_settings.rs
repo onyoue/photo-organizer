@@ -70,6 +70,7 @@ mod tests {
             ],
             active_raw_developer_index: 1,
             raw_developer_path: None,
+            gallery: Default::default(),
         };
         write(&dir, &s).unwrap();
         let loaded = read(&dir);
@@ -133,6 +134,49 @@ mod tests {
     }
 
     #[test]
+    fn gallery_settings_round_trip() {
+        use crate::models::settings::{Decision, GallerySettings};
+        let dir = tempdir();
+        let s = AppSettings {
+            gallery: GallerySettings {
+                worker_url: "https://photo-gallery.example.workers.dev/".into(),
+                admin_token: "secret-123".into(),
+                default_decision: Decision::Ng,
+            },
+            ..Default::default()
+        };
+        write(&dir, &s).unwrap();
+        let loaded = read(&dir);
+        assert_eq!(loaded.gallery.worker_url, "https://photo-gallery.example.workers.dev/");
+        assert_eq!(loaded.gallery.base_url(), "https://photo-gallery.example.workers.dev");
+        assert_eq!(loaded.gallery.admin_token, "secret-123");
+        assert_eq!(loaded.gallery.default_decision, Decision::Ng);
+        assert!(loaded.gallery.is_configured());
+    }
+
+    #[test]
+    fn gallery_default_is_unconfigured() {
+        let s = AppSettings::default();
+        assert!(!s.gallery.is_configured());
+    }
+
+    #[test]
+    fn old_settings_without_gallery_still_parse() {
+        // A v3 settings.json (raw_developers + active_index) should still
+        // load — the new `gallery` field comes back as default.
+        let dir = tempdir();
+        fs::create_dir_all(&dir).unwrap();
+        let json = r#"{
+            "raw_developers": [{"name": "x", "path": "y"}],
+            "active_raw_developer_index": 0
+        }"#;
+        fs::write(settings_path(&dir), json).unwrap();
+        let loaded = read(&dir);
+        assert_eq!(loaded.raw_developers.len(), 1);
+        assert!(!loaded.gallery.is_configured());
+    }
+
+    #[test]
     fn out_of_range_active_index_yields_no_active_entry() {
         let s = AppSettings {
             raw_developers: vec![RawDeveloperEntry {
@@ -141,6 +185,7 @@ mod tests {
             }],
             active_raw_developer_index: 5,
             raw_developer_path: None,
+            gallery: Default::default(),
         };
         assert!(s.active_raw_developer().is_none());
     }
