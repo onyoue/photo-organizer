@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import type { AppSettings, RawDeveloperEntry } from "../types/settings";
+import type {
+  AppSettings,
+  Decision,
+  GallerySettings,
+  RawDeveloperEntry,
+} from "../types/settings";
 
 interface Props {
   initial: AppSettings;
@@ -25,7 +30,16 @@ export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
   const [active, setActive] = useState<number>(
     initial.active_raw_developer_index ?? 0,
   );
+  const [gallery, setGallery] = useState<GallerySettings>({
+    worker_url: initial.gallery?.worker_url ?? "",
+    admin_token: initial.gallery?.admin_token ?? "",
+    default_decision: initial.gallery?.default_decision ?? "ok",
+  });
   const [error, setError] = useState<string | null>(null);
+
+  function patchGallery(patch: Partial<GallerySettings>) {
+    setGallery((prev) => ({ ...prev, ...patch }));
+  }
 
   function updateAt(i: number, patch: Partial<RawDeveloperEntry>) {
     setDevs((prev) =>
@@ -78,6 +92,11 @@ export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
     const next: AppSettings = {
       raw_developers: cleaned,
       active_raw_developer_index: clampActive(cleaned, active),
+      gallery: {
+        worker_url: (gallery.worker_url ?? "").trim(),
+        admin_token: (gallery.admin_token ?? "").trim(),
+        default_decision: gallery.default_decision ?? "ok",
+      },
     };
     try {
       await onSave(next);
@@ -168,6 +187,53 @@ export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
               >
                 + Add developer
               </button>
+            </div>
+          </div>
+
+          <div className="settings-field">
+            <label>Photo gallery share</label>
+            <p className="settings-hint">
+              Cloudflare Worker that hosts shareable galleries for client
+              review. Empty fields disable the share feature; see
+              gallery-worker/SETUP.md to deploy your own.
+            </p>
+            <div className="gallery-settings">
+              <label className="gallery-row">
+                <span>Worker URL</span>
+                <input
+                  type="text"
+                  value={gallery.worker_url ?? ""}
+                  onChange={(e) => patchGallery({ worker_url: e.target.value })}
+                  placeholder="https://photo-gallery.you.workers.dev"
+                  disabled={busy}
+                />
+              </label>
+              <label className="gallery-row">
+                <span>Admin token</span>
+                <input
+                  type="password"
+                  value={gallery.admin_token ?? ""}
+                  onChange={(e) => patchGallery({ admin_token: e.target.value })}
+                  placeholder="(matches the Worker's ADMIN_TOKEN secret)"
+                  disabled={busy}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="gallery-row">
+                <span>Default decision</span>
+                <select
+                  value={gallery.default_decision ?? "ok"}
+                  onChange={(e) =>
+                    patchGallery({
+                      default_decision: e.target.value as Decision,
+                    })
+                  }
+                  disabled={busy}
+                >
+                  <option value="ok">OK (model only flags rejects)</option>
+                  <option value="ng">NG (model only flags keepers)</option>
+                </select>
+              </label>
             </div>
           </div>
         </div>

@@ -358,6 +358,37 @@ html,
   cursor: pointer;
 }
 
+.gallery-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.gallery-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.gallery-row > span {
+  font-size: 11px;
+  color: #555;
+}
+
+.gallery-row input,
+.gallery-row select {
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #fff;
+  min-width: 0;
+}
+
 .settings-hint {
   margin: 4px 0 0;
   font-size: 11px;
@@ -1503,10 +1534,15 @@ html,
   .settings-row button,
   .settings-actions button,
   .raw-dev-row input,
-  .raw-dev-row button {
+  .raw-dev-row button,
+  .gallery-row input,
+  .gallery-row select {
     background: #1f1f1f;
     color: #e8e8e8;
     border-color: #4a4a4a;
+  }
+  .gallery-row > span {
+    color: #aaa;
   }
   .raw-dev-add {
     background: transparent;
