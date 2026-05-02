@@ -18,6 +18,7 @@ import {
   readJson,
   text,
 } from "./util";
+import { crc32 } from "./zip";
 
 const MAX_PHOTOS = 500;
 const MAX_PHOTO_BYTES = 25 * 1024 * 1024; // per-file upload limit
@@ -120,10 +121,19 @@ async function uploadPhoto(
   if (body.byteLength === 0) return badRequest("empty body");
   if (body.byteLength > MAX_PHOTO_BYTES) return text("Payload Too Large", 413);
 
+  // Pre-compute CRC-32 here (CPU cost paid per upload, ~few ms per MB).
+  // Stored on the R2 object so the ZIP route can stream bytes without
+  // touching CPU on the way out.
+  const crc = crc32(new Uint8Array(body));
+
   await env.GALLERY_BUCKET.put(r2KeyForPhoto(gid, pid), body, {
     httpMetadata: { contentType },
+    customMetadata: {
+      crc32: crc.toString(16).padStart(8, "0"),
+      size: body.byteLength.toString(),
+    },
   });
-  return json({ pid, size: body.byteLength });
+  return json({ pid, size: body.byteLength, crc32: crc.toString(16) });
 }
 
 async function finalizeGallery(env: Env, gid: string): Promise<Response> {

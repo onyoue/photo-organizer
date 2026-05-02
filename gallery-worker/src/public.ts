@@ -12,8 +12,8 @@ import {
   notFound,
   r2KeyForPhoto,
   readJson,
-  text,
 } from "./util";
+import { ZipStreamWriter, dedupeFilenames } from "./zip";
 
 interface PublicPhoto {
   pid: string;
@@ -163,9 +163,51 @@ function galleryHtml(_gid: string, meta: GalleryMeta): Response {
   );
 }
 
-function zipStream(_env: Env, _gid: string, _meta: GalleryMeta): Response {
-  // TODO: stream STORE-method ZIP in a follow-up commit.
-  return text("ZIP not implemented", 501);
+function zipStream(env: Env, gid: string, meta: GalleryMeta): Response {
+  const filenames = dedupeFilenames(meta.photos.map((p) => p.filename));
+  const downloadName = `${sanitizeForDisposition(meta.name)}.zip`;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        const writer = new ZipStreamWriter();
+        for (let i = 0; i < meta.photos.length; i++) {
+          const photo = meta.photos[i]!;
+          const obj = await env.GALLERY_BUCKET.get(r2KeyForPhoto(gid, photo.pid));
+          if (!obj) throw new Error(`photo ${photo.pid} missing in storage`);
+
+          const crcHex = obj.customMetadata?.crc32;
+          if (!crcHex) {
+            throw new Error(`photo ${photo.pid} has no CRC; re-upload required`);
+          }
+          const crc = parseInt(crcHex, 16) >>> 0;
+          const size = obj.size;
+
+          await writer.writeFile(controller, filenames[i]!, crc, size, obj.body);
+        }
+        writer.finalize(controller);
+        controller.close();
+      } catch (e) {
+        controller.error(e);
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "application/zip",
+      "content-disposition": `attachment; filename="${downloadName}"`,
+      "x-robots-tag": "noindex",
+    },
+  });
+}
+
+function sanitizeForDisposition(s: string): string {
+  // Strip CR/LF and quotes; replace path separators. Anything else is fine
+  // — Content-Disposition allows UTF-8 with the right encoding, and modern
+  // browsers handle quoted ASCII-ish names well enough.
+  const cleaned = s.replace(/[\r\n"\\\/]/g, "_").trim();
+  return cleaned || "gallery";
 }
 
 function escapeHtml(s: string): string {
