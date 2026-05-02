@@ -52,9 +52,13 @@ describe("renderGalleryHtml", () => {
     expect(html).toContain('"p1":"ng"');
   });
 
-  it("includes only meta needed by the client (not content_type/size)", () => {
+  it("strips per-photo content_type/size from the inlined manifest", () => {
+    // The client only needs pid + filename; content_type and size live on
+    // the R2 object itself. (A generic "image/jpeg" fallback string can
+    // appear in the inline JS — that's a default for blob.type, not
+    // leaked per-photo metadata.)
     const html = renderGalleryHtml(GID, BASE, {});
     expect(html).not.toContain("content_type");
-    expect(html).not.toContain("image/jpeg");
+    expect(html).not.toContain('"size":');
   });
 });

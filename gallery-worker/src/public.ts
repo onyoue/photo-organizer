@@ -66,7 +66,9 @@ export async function handlePublic(
   }
 
   if (action === "zip" && req.method === "GET") {
-    return zipStream(env, gid, meta);
+    const url = new URL(req.url);
+    const pidsParam = url.searchParams.get("pids");
+    return zipStream(env, gid, meta, pidsParam);
   }
 
   return notFound();
@@ -177,16 +179,31 @@ async function galleryHtml(
   });
 }
 
-function zipStream(env: Env, gid: string, meta: GalleryMeta): Response {
-  const filenames = dedupeFilenames(meta.photos.map((p) => p.filename));
+function zipStream(
+  env: Env,
+  gid: string,
+  meta: GalleryMeta,
+  pidsParam: string | null,
+): Response {
+  // Optional ?pids= filter — model selected a subset on the gallery page
+  // and we ZIP only those. Photos are kept in their declared (newest-first)
+  // order regardless of the order pids appear in the query.
+  let photoSubset = meta.photos;
+  if (pidsParam) {
+    const requested = new Set(
+      pidsParam.split(",").map((s) => s.trim()).filter(Boolean),
+    );
+    photoSubset = meta.photos.filter((p) => requested.has(p.pid));
+  }
+  const filenames = dedupeFilenames(photoSubset.map((p) => p.filename));
   const downloadName = `${sanitizeForDisposition(meta.name)}.zip`;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
         const writer = new ZipStreamWriter();
-        for (let i = 0; i < meta.photos.length; i++) {
-          const photo = meta.photos[i]!;
+        for (let i = 0; i < photoSubset.length; i++) {
+          const photo = photoSubset[i]!;
           const obj = await env.GALLERY_BUCKET.get(r2KeyForPhoto(gid, photo.pid));
           if (!obj) throw new Error(`photo ${photo.pid} missing in storage`);
 

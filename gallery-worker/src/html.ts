@@ -46,11 +46,18 @@ export function renderGalleryHtml(
   <h1>${safeName}</h1>
   <div class="meta">
     <span id="info"></span>
-    <a id="dl" href="/${gid}/zip">↓ 全部DL (.zip)</a>
+    <button id="selBtn" class="hdr-btn" type="button">選択</button>
+    <a id="dl" href="/${gid}/zip">↓ 全部DL</a>
   </div>
   <div class="hint" id="hint"></div>
 </header>
 <main id="grid" class="grid"></main>
+<div id="selBar" class="selbar" hidden>
+  <span id="selCount">0 枚選択中</span>
+  <button id="selSave" type="button">保存</button>
+  <button id="selCancel" type="button">キャンセル</button>
+</div>
+<div id="toast" class="toast" hidden></div>
 <div id="lb" class="lb" hidden>
   <button class="close" id="lbClose" aria-label="閉じる">×</button>
   <div class="lb-stage" id="lbStage">
@@ -102,6 +109,9 @@ header .meta{display:flex;justify-content:space-between;align-items:center;font-
 header .meta #info{flex:1;min-width:0}
 header .meta #dl{color:#9cf;text-decoration:none;padding:6px 10px;border:1px solid #345;border-radius:6px;white-space:nowrap}
 header .meta #dl:active{background:#234}
+.hdr-btn{background:transparent;color:#9cf;border:1px solid #345;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+.hdr-btn:active{background:#234}
+.hdr-btn.active{background:#234;color:#fff;border-color:#56a}
 .hint{font-size:11px;color:#777;margin-top:6px}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:2px}
 @media(min-width:640px){.grid{grid-template-columns:repeat(4,1fr)}}
@@ -113,6 +123,17 @@ header .meta #dl:active{background:#234}
 .tile .badge[data-d="ng"]{background:#a8261c}
 .tile .badge[data-d="fav"]{background:#c08a00}
 .tile.is-default .badge{opacity:.55}
+.tile .sel-mark{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.5);border:2px solid #fff;display:none;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700}
+body.selecting .tile .sel-mark{display:flex}
+body.selecting .tile.selected{outline:3px solid #56a;outline-offset:-3px}
+body.selecting .tile.selected .sel-mark{background:#56a;border-color:#fff}
+body.selecting .tile .badge{display:none}
+.selbar{position:sticky;bottom:0;z-index:9;display:flex;align-items:center;gap:10px;padding:10px 14px max(10px,env(safe-area-inset-bottom));background:rgba(20,20,20,.95);border-top:1px solid #333;backdrop-filter:blur(8px)}
+.selbar #selCount{flex:1;font-size:13px}
+.selbar button{padding:8px 14px;font-size:13px;border-radius:6px;border:1px solid #345;background:#1f1f1f;color:#e8e8e8;cursor:pointer}
+.selbar #selSave{background:#0a7d3a;border-color:#0a7d3a;color:#fff;font-weight:600}
+.selbar #selSave[disabled]{opacity:.4}
+.toast{position:fixed;left:50%;bottom:30%;transform:translateX(-50%);background:rgba(0,0,0,.85);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;pointer-events:none;max-width:80vw;text-align:center}
 .lb{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column}
 .lb[hidden]{display:none}
 .lb .close{position:absolute;top:max(10px,env(safe-area-inset-top));right:10px;width:44px;height:44px;background:rgba(0,0,0,.5);border:0;color:#fff;font-size:24px;border-radius:50%;cursor:pointer;z-index:2}
@@ -142,9 +163,12 @@ const $=id=>document.getElementById(id);
 const grid=$("grid"),lb=$("lb"),lbImg=$("lbImg"),lbMeta=$("lbMeta"),lbPrev=$("lbPrev"),lbNext=$("lbNext"),lbClose=$("lbClose"),lbStage=$("lbStage");
 const decOk=$("decOk"),decNg=$("decNg"),decFav=$("decFav");
 const info=$("info"),hint=$("hint");
+const selBtn=$("selBtn"),selBar=$("selBar"),selCount=$("selCount"),selSave=$("selSave"),selCancel=$("selCancel"),toast=$("toast");
 const photos=G.photos,decisions=G.decisions||{},def=G.default_decision;
 const photoUrl=p=>"/"+G.gid+"/p/"+p.pid;
 const fbUrl="/"+G.gid+"/feedback";
+const selectedPids=new Set();
+let selecting=false;
 
 // ---------- header ----------
 const expMs=Date.parse(G.expires_at)-Date.now();
@@ -159,7 +183,8 @@ function decisionGlyph(d){return d==="ok"?"✓":d==="ng"?"✕":"★";}
 function renderGrid(){
   grid.innerHTML=photos.map((p,i)=>{
     const d=decisionFor(p.pid),defCls=isDefault(p.pid)?"is-default":"";
-    return '<button class="tile '+defCls+'" data-i="'+i+'" type="button"><img src="'+photoUrl(p)+'" alt="" loading="lazy"><span class="badge" data-d="'+d+'">'+decisionGlyph(d)+'</span></button>';
+    const selCls=selectedPids.has(p.pid)?" selected":"";
+    return '<button class="tile '+defCls+selCls+'" data-i="'+i+'" data-pid="'+p.pid+'" type="button"><img src="'+photoUrl(p)+'" alt="" loading="lazy"><span class="badge" data-d="'+d+'">'+decisionGlyph(d)+'</span><span class="sel-mark">'+(selectedPids.has(p.pid)?"✓":"")+'</span></button>';
   }).join("");
 }
 renderGrid();
@@ -167,8 +192,89 @@ renderGrid();
 grid.addEventListener("click",e=>{
   const t=e.target.closest(".tile");
   if(!t)return;
-  openAt(parseInt(t.dataset.i,10));
+  if(selecting){
+    toggleSelect(t.dataset.pid,t);
+  }else{
+    openAt(parseInt(t.dataset.i,10));
+  }
 });
+
+// ---------- selection mode ----------
+function setSelecting(on){
+  selecting=on;
+  document.body.classList.toggle("selecting",on);
+  selBtn.classList.toggle("active",on);
+  selBtn.textContent=on?"完了":"選択";
+  selBar.hidden=!on;
+  if(!on){
+    selectedPids.clear();
+    grid.querySelectorAll(".tile.selected").forEach(t=>{
+      t.classList.remove("selected");
+      const m=t.querySelector(".sel-mark");if(m)m.textContent="";
+    });
+    updateSelCount();
+  }
+}
+function toggleSelect(pid,tileEl){
+  if(selectedPids.has(pid)){selectedPids.delete(pid);tileEl.classList.remove("selected");}
+  else{selectedPids.add(pid);tileEl.classList.add("selected");}
+  const m=tileEl.querySelector(".sel-mark");if(m)m.textContent=selectedPids.has(pid)?"✓":"";
+  updateSelCount();
+}
+function updateSelCount(){
+  selCount.textContent=selectedPids.size+" 枚選択中";
+  selSave.disabled=selectedPids.size===0;
+}
+selBtn.addEventListener("click",()=>setSelecting(!selecting));
+selCancel.addEventListener("click",()=>setSelecting(false));
+selSave.addEventListener("click",()=>downloadSelected([...selectedPids]));
+
+function showToast(msg,ms){
+  toast.textContent=msg;toast.hidden=false;
+  if(ms){clearTimeout(showToast._t);showToast._t=setTimeout(()=>{toast.hidden=true;},ms);}
+}
+function hideToast(){toast.hidden=true;}
+
+async function downloadSelected(pids){
+  if(pids.length===0)return;
+  selSave.disabled=true;
+  showToast(pids.length+" 枚を取得中…");
+  try{
+    const files=[];
+    for(let i=0;i<pids.length;i++){
+      const pid=pids[i];
+      const photo=photos.find(p=>p.pid===pid);
+      if(!photo)continue;
+      showToast("取得中 "+(i+1)+"/"+pids.length);
+      const resp=await fetch(photoUrl(photo));
+      if(!resp.ok)throw new Error("fetch "+pid+" failed: "+resp.status);
+      const blob=await resp.blob();
+      files.push(new File([blob],photo.filename,{type:blob.type||"image/jpeg"}));
+    }
+    if(navigator.canShare&&navigator.canShare({files:files})){
+      hideToast();
+      try{
+        await navigator.share({files:files});
+        // share sheet closed (saved or cancelled); leave selection mode regardless.
+        setSelecting(false);
+      }catch(err){
+        // AbortError just means the user dismissed the sheet — not a real failure.
+        if(err&&err.name!=="AbortError"){
+          showToast("保存に失敗しました: "+err.message,4000);
+        }
+      }
+    }else{
+      // Older browser — fall back to ZIP download.
+      hideToast();
+      window.location.href="/"+G.gid+"/zip?pids="+pids.join(",");
+      setSelecting(false);
+    }
+  }catch(e){
+    showToast("ダウンロード失敗: "+(e&&e.message||e),4000);
+  }finally{
+    selSave.disabled=selectedPids.size===0;
+  }
+}
 
 // ---------- lightbox ----------
 let cur=-1;
