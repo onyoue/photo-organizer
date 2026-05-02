@@ -17,11 +17,13 @@ interface Props {
 }
 
 export interface ApplyResult {
+  /** Bundles that received a new flag (FAV → pick, NG → reject). */
   applied: number;
+  /** Bundles where a stale flag was cleared because the model didn't
+   * vote anything actionable on any of its variants. */
+  cleared: number;
   /** Entries that did not match any bundle in the currently-loaded folder. */
   notInCurrentFolder: number;
-  /** Entries skipped because the model agreed with the default. */
-  agreedWithDefault: number;
 }
 
 // Galleries created with the "期限なし" option get an expires_at well past
@@ -411,8 +413,8 @@ export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Pro
 function formatApplySummary(r: ApplyResult): string {
   const parts: string[] = [];
   parts.push(`${r.applied} 件にフラグ反映`);
-  if (r.agreedWithDefault > 0) {
-    parts.push(`${r.agreedWithDefault} 件は既定どおりでスキップ`);
+  if (r.cleared > 0) {
+    parts.push(`${r.cleared} 件のフラグをクリア`);
   }
   if (r.notInCurrentFolder > 0) {
     parts.push(`${r.notInCurrentFolder} 件は現在のフォルダに無いためスキップ`);

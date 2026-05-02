@@ -905,12 +905,11 @@ function App() {
       if (!index) {
         return {
           applied: 0,
+          cleared: 0,
           notInCurrentFolder: new Set(entries.map((e) => e.bundle_id)).size,
-          agreedWithDefault: 0,
         };
       }
 
-      let agreedWithDefault = 0;
       let notInCurrentFolder = 0;
 
       // Group per bundle — each bundle now has multiple variant entries
@@ -927,6 +926,7 @@ function App() {
       );
       const pickRefs: BundleRef[] = [];
       const rejectRefs: BundleRef[] = [];
+      const clearRefs: BundleRef[] = [];
 
       for (const [bundleId, group] of byBundle) {
         const bundle = bundlesById.get(bundleId);
@@ -942,7 +942,11 @@ function App() {
         // Simple aggregation across variants:
         //   any explicit FAV → pick (FAV beats everything)
         //   any explicit NG  → reject
-        //   otherwise        → no change (model didn't flag any variant)
+        //   otherwise        → clear (no actionable feedback for this bundle)
+        // Clearing in the no-actionable-feedback case is essential: with
+        // local P/X toggles gone, gallery feedback is the only flag source,
+        // so re-applying must overwrite stale flags from a previous apply
+        // or a since-removed FAV vote.
         const explicitFav = group.some(
           (e) => e.explicit && e.decision === "fav",
         );
@@ -954,8 +958,11 @@ function App() {
           pickRefs.push(ref);
         } else if (explicitNg) {
           rejectRefs.push(ref);
-        } else {
-          agreedWithDefault++;
+        } else if (bundle.flag !== undefined) {
+          // Only emit a clear if the bundle actually has a flag to clear.
+          // Skipping the no-op case keeps the apply count honest and avoids
+          // pointless sidecar churn.
+          clearRefs.push(ref);
         }
       }
 
@@ -973,9 +980,17 @@ function App() {
           flag: "reject",
         });
       }
+      if (clearRefs.length > 0) {
+        await invoke("set_bundle_flag", {
+          folder: index.folder_path,
+          bundles: clearRefs,
+          flag: null,
+        });
+      }
 
       const pickIds = new Set(pickRefs.map((r) => r.bundle_id));
       const rejectIds = new Set(rejectRefs.map((r) => r.bundle_id));
+      const clearIds = new Set(clearRefs.map((r) => r.bundle_id));
       setIndex((prev) => {
         if (!prev) return prev;
         return {
@@ -983,6 +998,10 @@ function App() {
           bundles: prev.bundles.map((b) => {
             if (pickIds.has(b.bundle_id)) return { ...b, flag: "pick" };
             if (rejectIds.has(b.bundle_id)) return { ...b, flag: "reject" };
+            if (clearIds.has(b.bundle_id)) {
+              const { flag: _flag, ...rest } = b;
+              return rest as typeof b;
+            }
             return b;
           }),
         };
@@ -990,8 +1009,8 @@ function App() {
 
       return {
         applied: pickRefs.length + rejectRefs.length,
+        cleared: clearRefs.length,
         notInCurrentFolder,
-        agreedWithDefault,
       };
     },
     [index],
@@ -1014,7 +1033,7 @@ function App() {
         return;
       }
       let totalApplied = 0;
-      let totalSkipped = 0;
+      let totalCleared = 0;
       for (let i = 0; i < matching.length; i++) {
         const g = matching[i]!;
         setToast(
@@ -1026,11 +1045,12 @@ function App() {
         );
         const result = await applyGalleryFeedback(g.gid, entries);
         totalApplied += result.applied;
-        totalSkipped += result.agreedWithDefault;
+        totalCleared += result.cleared;
       }
-      const skippedNote = totalSkipped > 0 ? ` · ${totalSkipped} 件スキップ` : "";
+      const clearedNote =
+        totalCleared > 0 ? ` · ${totalCleared} 件をクリア` : "";
       setToast(
-        `✓ ${matching.length} 件のギャラリーから ${totalApplied} 件にフラグ反映${skippedNote}`,
+        `✓ ${matching.length} 件のギャラリーから ${totalApplied} 件にフラグ反映${clearedNote}`,
       );
     } catch (e: unknown) {
       setToast(`エラー: ${e instanceof Error ? e.message : String(e)}`);
