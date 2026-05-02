@@ -53,6 +53,7 @@ export function renderGalleryHtml(
 </header>
 <main id="grid" class="grid"></main>
 <div id="selBar" class="selbar" hidden>
+  <button id="selAll" type="button">全選択</button>
   <span id="selCount">0 枚選択中</span>
   <button id="selSave" type="button">保存</button>
   <button id="selCancel" type="button">キャンセル</button>
@@ -163,7 +164,7 @@ const $=id=>document.getElementById(id);
 const grid=$("grid"),lb=$("lb"),lbImg=$("lbImg"),lbMeta=$("lbMeta"),lbPrev=$("lbPrev"),lbNext=$("lbNext"),lbClose=$("lbClose"),lbStage=$("lbStage");
 const decOk=$("decOk"),decNg=$("decNg"),decFav=$("decFav");
 const info=$("info"),hint=$("hint");
-const selBtn=$("selBtn"),selBar=$("selBar"),selCount=$("selCount"),selSave=$("selSave"),selCancel=$("selCancel"),toast=$("toast");
+const selBtn=$("selBtn"),selBar=$("selBar"),selCount=$("selCount"),selSave=$("selSave"),selCancel=$("selCancel"),selAll=$("selAll"),toast=$("toast");
 const photos=G.photos,decisions=G.decisions||{},def=G.default_decision;
 const photoUrl=p=>"/"+G.gid+"/p/"+p.pid;
 const fbUrl="/"+G.gid+"/feedback";
@@ -224,10 +225,25 @@ function toggleSelect(pid,tileEl){
 function updateSelCount(){
   selCount.textContent=selectedPids.size+" 枚選択中";
   selSave.disabled=selectedPids.size===0;
+  selAll.textContent=(selectedPids.size===photos.length&&photos.length>0)?"全解除":"全選択";
+}
+function toggleSelectAll(){
+  if(selectedPids.size===photos.length){
+    selectedPids.clear();
+  }else{
+    photos.forEach(p=>selectedPids.add(p.pid));
+  }
+  grid.querySelectorAll(".tile").forEach(t=>{
+    const sel=selectedPids.has(t.dataset.pid);
+    t.classList.toggle("selected",sel);
+    const m=t.querySelector(".sel-mark");if(m)m.textContent=sel?"✓":"";
+  });
+  updateSelCount();
 }
 selBtn.addEventListener("click",()=>setSelecting(!selecting));
 selCancel.addEventListener("click",()=>setSelecting(false));
 selSave.addEventListener("click",()=>downloadSelected([...selectedPids]));
+selAll.addEventListener("click",toggleSelectAll);
 
 function showToast(msg,ms){
   toast.textContent=msg;toast.hidden=false;
