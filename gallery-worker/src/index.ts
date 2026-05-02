@@ -25,8 +25,9 @@
  */
 
 import { handleAdmin } from "./admin";
+import { handlePublic } from "./public";
 import type { Env } from "./types";
-import { notFound, text } from "./util";
+import { text } from "./util";
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -50,12 +51,5 @@ export default {
     return handlePublic(req, env, segs);
   },
 } satisfies ExportedHandler<Env>;
-
-async function handlePublic(req: Request, _env: Env, segs: string[]): Promise<Response> {
-  if (segs.length === 0) return notFound();
-  // TODO: dispatch public routes.
-  void req;
-  return text("public not implemented", 501);
-}
 
 export type { Env };
