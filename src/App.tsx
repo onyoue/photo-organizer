@@ -932,21 +932,20 @@ function App() {
           base_name: bundle.base_name,
         };
 
-        // Aggregate variant decisions into a bundle-level signal:
-        //   any FAV → pick (model loves at least one variant)
-        //   all explicit are NG → reject (model rejects every variant)
-        //   anything else (mix, all-default, default-agreement) → no change
-        const explicitDecisions = group
-          .filter((e) => e.explicit)
-          .map((e) => e.decision);
-        const hasFav = explicitDecisions.includes("fav");
-        const allExplicitAreNg =
-          explicitDecisions.length > 0 &&
-          explicitDecisions.every((d) => d === "ng");
+        // Simple aggregation across variants:
+        //   any explicit FAV → pick (FAV beats everything)
+        //   any explicit NG  → reject
+        //   otherwise        → no change (model didn't flag any variant)
+        const explicitFav = group.some(
+          (e) => e.explicit && e.decision === "fav",
+        );
+        const explicitNg = group.some(
+          (e) => e.explicit && e.decision === "ng",
+        );
 
-        if (hasFav) {
+        if (explicitFav) {
           pickRefs.push(ref);
-        } else if (allExplicitAreNg) {
+        } else if (explicitNg) {
           rejectRefs.push(ref);
         } else {
           agreedWithDefault++;
@@ -1412,6 +1411,7 @@ function App() {
 
       {showGalleries && (
         <GalleriesDialog
+          currentFolder={index?.folder_path ?? null}
           onClose={() => setShowGalleries(false)}
           onApplyFeedback={applyGalleryFeedback}
         />

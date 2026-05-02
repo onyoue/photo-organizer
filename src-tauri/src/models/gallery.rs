@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::models::settings::Decision;
@@ -17,7 +19,9 @@ pub struct GalleryPhotoRecord {
 
 /// Local record of a gallery created by this app. Stored as an entry in
 /// `app_data_dir/galleries.json`. The Worker is the source of truth for
-/// feedback state; this struct just remembers what was sent and where.
+/// feedback state; this struct just remembers what was sent and where,
+/// plus a snapshot of the last fetched decisions so the dialog can show
+/// state across app restarts without re-fetching.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GalleryRecord {
     pub gid: String,
@@ -27,6 +31,18 @@ pub struct GalleryRecord {
     pub created_at: String,
     pub expires_at: String,
     pub default_decision: Decision,
+    /// Source folder path the photos were uploaded from. Lets the apply
+    /// step warn when a different folder is currently open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_folder: Option<String>,
     pub photos: Vec<GalleryPhotoRecord>,
+    /// Last fetched per-pid decisions from the Worker. Kept here so the
+    /// galleries dialog can display state without re-running fetch_feedback
+    /// after every app restart.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub last_decisions: HashMap<String, Decision>,
+    /// ISO-8601 timestamp of the last successful feedback fetch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_fetched_at: Option<String>,
 }
 

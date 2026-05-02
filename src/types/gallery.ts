@@ -18,7 +18,14 @@ export interface GalleryRecord {
   created_at: string;
   expires_at: string;
   default_decision: Decision;
+  /** Source folder the photos came from. Used to warn the user if they
+   * try to apply feedback while a different folder is open. */
+  source_folder?: string;
   photos: GalleryPhotoRecord[];
+  /** Cached per-pid decisions from the last successful feedback fetch. */
+  last_decisions?: Record<string, Decision>;
+  /** ISO-8601 timestamp of the last successful feedback fetch. */
+  last_fetched_at?: string;
 }
 
 export interface GalleryFeedbackEntry {

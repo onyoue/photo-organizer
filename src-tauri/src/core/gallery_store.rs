@@ -70,6 +70,7 @@ mod tests {
             created_at: "2026-05-01T00:00:00Z".into(),
             expires_at: "2026-05-08T00:00:00Z".into(),
             default_decision: Decision::Ok,
+            source_folder: Some("C:/x".into()),
             photos: vec![GalleryPhotoRecord {
                 pid: "p001".into(),
                 bundle_id: "b1".into(),
@@ -78,6 +79,8 @@ mod tests {
                 size: 1234,
                 content_type: "image/jpeg".into(),
             }],
+            last_decisions: Default::default(),
+            last_fetched_at: None,
         }
     }
 

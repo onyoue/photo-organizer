@@ -208,7 +208,10 @@ pub async fn share_gallery(
         created_at: now.to_rfc3339(),
         expires_at: expires_at.to_rfc3339(),
         default_decision: args.default_decision,
+        source_folder: Some(args.folder.clone()),
         photos: photo_records,
+        last_decisions: Default::default(),
+        last_fetched_at: None,
     };
 
     {
@@ -267,6 +270,18 @@ pub async fn fetch_gallery_feedback(
     let local = local.ok_or_else(|| {
         AppError::InvalidArgument("gallery not found in local store".into())
     })?;
+
+    // Cache the fetched decisions on the local record so the next app
+    // start can show state in the galleries dialog without re-fetching.
+    {
+        let dir = dir.clone();
+        let mut updated = local.clone();
+        updated.last_decisions = resp.decisions.clone();
+        updated.last_fetched_at = Some(chrono::Utc::now().to_rfc3339());
+        tauri::async_runtime::spawn_blocking(move || gallery_store::upsert(&dir, updated))
+            .await
+            .map_err(|e| AppError::InvalidArgument(format!("save task: {e}")))??;
+    }
 
     let mut out = Vec::with_capacity(local.photos.len());
     for photo in &local.photos {

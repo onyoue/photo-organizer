@@ -5,6 +5,10 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { GalleryFeedbackEntry, GalleryRecord } from "../types/gallery";
 
 interface Props {
+  /** Currently-loaded folder, or null when nothing's open. Used to flag
+   * galleries whose source folder doesn't match before the photographer
+   * runs feedback application. */
+  currentFolder: string | null;
   onClose: () => void;
   onApplyFeedback: (
     gid: string,
@@ -43,7 +47,34 @@ interface BulkDeleteResult {
   failed: { gid: string; error: string }[];
 }
 
-export function GalleriesDialog({ onClose, onApplyFeedback }: Props) {
+function formatRelativeTime(iso?: string): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "たった今";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 時間前`;
+  return `${Math.floor(diff / 86_400_000)} 日前`;
+}
+
+function summariseDecisions(
+  g: GalleryRecord,
+): { fav: number; ng: number; ok: number; total: number } | null {
+  const decisions = g.last_decisions;
+  if (!decisions || Object.keys(decisions).length === 0) return null;
+  let fav = 0;
+  let ng = 0;
+  let ok = 0;
+  for (const v of Object.values(decisions)) {
+    if (v === "fav") fav++;
+    else if (v === "ng") ng++;
+    else ok++;
+  }
+  return { fav, ng, ok, total: g.photos.length };
+}
+
+export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Props) {
   const [galleries, setGalleries] = useState<GalleryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null); // gid being acted on, or "__bulk__"
@@ -106,6 +137,24 @@ export function GalleriesDialog({ onClose, onApplyFeedback }: Props) {
 
   async function fetchFeedback(g: GalleryRecord) {
     if (busy) return;
+
+    // Warn (but don't block) if the photographer is on a different folder
+    // than the one this gallery was created from — apply will silently
+    // skip every bundle and the result will look broken.
+    if (
+      g.source_folder &&
+      currentFolder &&
+      normalize(g.source_folder) !== normalize(currentFolder)
+    ) {
+      const proceed = await ask(
+        `このギャラリーは別フォルダ (${g.source_folder}) のバンドルから作成されています。\n`
+          + `現在開いているフォルダ (${currentFolder}) には対象バンドルが無いため、フラグは反映されません。\n\n`
+          + `それでも取り込みますか？（取得結果はキャッシュされます）`,
+        { title: "別フォルダのギャラリー", kind: "warning" },
+      );
+      if (!proceed) return;
+    }
+
     setBusy(g.gid);
     setError(null);
     try {
@@ -116,11 +165,18 @@ export function GalleriesDialog({ onClose, onApplyFeedback }: Props) {
       const result = await onApplyFeedback(g.gid, entries);
       const summary = formatApplySummary(result);
       setStatusByGid((prev) => ({ ...prev, [g.gid]: summary }));
+      // Refresh galleries so the cached last_decisions / last_fetched_at
+      // come back in to the dialog without re-opening.
+      await refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
+  }
+
+  function normalize(p: string): string {
+    return p.replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
   }
 
   async function deleteGallery(g: GalleryRecord) {
@@ -245,6 +301,12 @@ export function GalleriesDialog({ onClose, onApplyFeedback }: Props) {
                   const isBusy = busy === g.gid || busy === "__bulk__";
                   const status = statusByGid[g.gid];
                   const isSelected = selected.has(g.gid);
+                  const summary = summariseDecisions(g);
+                  const fetchedAgo = formatRelativeTime(g.last_fetched_at);
+                  const folderMismatch =
+                    !!(g.source_folder &&
+                      currentFolder &&
+                      normalize(g.source_folder) !== normalize(currentFolder));
                   return (
                     <li key={g.gid} className="gallery-item">
                       <div className="gallery-row-1">
@@ -264,11 +326,29 @@ export function GalleriesDialog({ onClose, onApplyFeedback }: Props) {
                           {g.default_decision === "ng" ? " · 既定NG" : ""}
                         </span>
                       </div>
-                    <div className="gallery-row-2">
-                      <code className="gallery-url" title={g.url}>
-                        {g.url}
-                      </code>
-                    </div>
+                      {summary && (
+                        <div className="gallery-feedback-summary">
+                          {summary.fav > 0 && (
+                            <span className="fb fb-fav">★ {summary.fav}</span>
+                          )}
+                          {summary.ng > 0 && (
+                            <span className="fb fb-ng">× {summary.ng}</span>
+                          )}
+                          {summary.ok > 0 && (
+                            <span className="fb fb-ok">✓ {summary.ok}</span>
+                          )}
+                          {fetchedAgo && (
+                            <span className="fb-time">
+                              · 前回取り込み {fetchedAgo}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {folderMismatch && (
+                        <div className="gallery-mismatch">
+                          ⚠ 別フォルダ ({g.source_folder}) のギャラリーです
+                        </div>
+                      )}
                     <div className="gallery-actions">
                       <button
                         type="button"
