@@ -11,6 +11,7 @@ import type { BundleSidecar, Flag, PostRecord } from "./types/sidecar";
 import type { AppSettings } from "./types/settings";
 import { generatePostId } from "./components/PostsSection";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { ShareDialog } from "./components/ShareDialog";
 import { CheatsheetOverlay } from "./components/CheatsheetOverlay";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
@@ -73,6 +74,7 @@ function App() {
     active_raw_developer_index: 0,
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
@@ -1273,9 +1275,28 @@ function App() {
               currentPreviewPath={currentPreviewVariant?.path ?? null}
               onSelectPreview={selectPreviewByPath}
               onTrashVariant={trashVariant}
+              onShare={() => setShowShare(true)}
+              shareDisabled={
+                !appSettings.gallery?.worker_url?.trim() ||
+                !appSettings.gallery?.admin_token?.trim() ||
+                selectedIds.size === 0
+              }
             />
           </aside>
         </div>
+      )}
+
+      {showShare && index && (
+        <ShareDialog
+          selectedBundles={index.bundles.filter((b) =>
+            selectedIds.has(b.bundle_id),
+          )}
+          defaultName={`${
+            index.folder_path.split(/[\\/]/).filter(Boolean).pop() ?? "gallery"
+          } ${new Date().toISOString().slice(0, 10)}`}
+          defaultDecision={appSettings.gallery?.default_decision ?? "ok"}
+          onClose={() => setShowShare(false)}
+        />
       )}
 
       {index && index.bundles.length > 0 && (

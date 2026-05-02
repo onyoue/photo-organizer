@@ -14,6 +14,9 @@ interface Props {
   onMove: (scope?: OpScope) => void;
   onCopy: (scope?: OpScope) => void;
   onOpen: (role: "raw" | "jpeg" | null) => void;
+  onShare: () => void;
+  /** When true the Share button is disabled (gallery not configured). */
+  shareDisabled: boolean;
   busy: boolean;
 
   sidecar: BundleSidecar | null;
@@ -52,6 +55,8 @@ export function DetailPanel({
   onMove,
   onCopy,
   onOpen,
+  onShare,
+  shareDisabled,
   busy,
   sidecar,
   sidecarLoading,
@@ -145,6 +150,18 @@ export function DetailPanel({
           }
         >
           Open RAW{rawSuffix}
+        </button>
+        <button
+          type="button"
+          onClick={onShare}
+          disabled={busy || shareDisabled}
+          title={
+            shareDisabled
+              ? "Configure gallery worker in Settings to enable sharing"
+              : "Upload selected developed JPG/PNGs to a shareable gallery"
+          }
+        >
+          Share…{suffix(selectedCount)}
         </button>
       </div>
 

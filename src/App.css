@@ -358,6 +358,84 @@ html,
   cursor: pointer;
 }
 
+.share-dialog {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+}
+
+.share-name-input,
+.share-decision-select {
+  padding: 4px 6px;
+  font-size: 13px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.share-expiry {
+  display: flex;
+  gap: 12px;
+}
+
+.share-radio {
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.share-progress {
+  position: relative;
+  height: 28px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #f4f4f4;
+}
+
+.share-progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #396cd8;
+  transition: width 0.15s;
+}
+
+.share-progress-text {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  line-height: 28px;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 8px;
+}
+
+.share-result {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.share-url {
+  flex: 1;
+  padding: 6px 8px;
+  background: #f4f4f4;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, monospace;
+  user-select: text;
+  word-break: break-all;
+}
+
+.share-result-hint {
+  margin-top: 8px;
+}
+
 .gallery-settings {
   display: flex;
   flex-direction: column;
@@ -1543,6 +1621,21 @@ html,
   }
   .gallery-row > span {
     color: #aaa;
+  }
+  .share-name-input,
+  .share-decision-select {
+    background: #1f1f1f;
+    color: #e8e8e8;
+    border-color: #4a4a4a;
+  }
+  .share-progress {
+    background: #1a1a1a;
+    border-color: #4a4a4a;
+  }
+  .share-url {
+    background: #1a1a1a;
+    color: #e8e8e8;
+    border-color: #4a4a4a;
   }
   .raw-dev-add {
     background: transparent;
