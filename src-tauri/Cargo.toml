@@ -26,3 +26,5 @@ webp = "0.3"
 kamadak-exif = "0.6"
 trash = "5"
 rayon = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["fs", "rt", "rt-multi-thread", "macros"] }
