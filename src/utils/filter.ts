@@ -12,8 +12,10 @@ export type FilterMode =
 
 export const FILTER_LABELS: Record<FilterMode, string> = {
   all: "All",
-  pick: "Pick",
-  reject: "Reject",
+  // Internal filter key is still "pick" for back-compat with existing
+  // sidecars; the visible label tracks the gallery-feedback semantics.
+  pick: "★ FAV",
+  reject: "✕ NG",
   unrated: "Unrated",
   rated4plus: "4★+",
   hasposts: "Posted",
