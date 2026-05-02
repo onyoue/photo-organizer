@@ -14,6 +14,7 @@ import {
   readJson,
 } from "./util";
 import { ZipStreamWriter, dedupeFilenames } from "./zip";
+import { renderGalleryHtml } from "./html";
 
 interface PublicPhoto {
   pid: string;
@@ -48,7 +49,7 @@ export async function handlePublic(
 
   const action = segs[1];
 
-  if (!action && req.method === "GET") return galleryHtml(gid, meta);
+  if (!action && req.method === "GET") return galleryHtml(env, gid, meta);
 
   if (action === "manifest" && req.method === "GET") {
     return json(await buildManifest(env, gid, meta), 200, {
@@ -71,11 +72,10 @@ export async function handlePublic(
   return notFound();
 }
 
-async function buildManifest(
+async function loadDecisions(
   env: Env,
   gid: string,
-  meta: GalleryMeta,
-): Promise<PublicManifest> {
+): Promise<Record<string, Decision>> {
   const decisions: Record<string, Decision> = {};
   let cursor: string | undefined;
   do {
@@ -90,13 +90,20 @@ async function buildManifest(
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
+  return decisions;
+}
 
+async function buildManifest(
+  env: Env,
+  gid: string,
+  meta: GalleryMeta,
+): Promise<PublicManifest> {
   return {
     name: meta.name,
     expires_at: meta.expires_at,
     default_decision: meta.default_decision,
     photos: meta.photos.map((p) => ({ pid: p.pid, filename: p.filename })),
-    decisions,
+    decisions: await loadDecisions(env, gid),
   };
 }
 
@@ -148,19 +155,21 @@ async function setFeedback(
   return json({ pid: body.pid, decision: body.decision });
 }
 
-function galleryHtml(_gid: string, meta: GalleryMeta): Response {
-  // TODO: full mobile UI in a follow-up commit.
-  return new Response(
-    `<!doctype html><meta charset="utf-8"><title>${escapeHtml(meta.name)}</title>` +
-      `<p>Gallery viewer not yet implemented. ${meta.photos.length} photos.</p>`,
-    {
-      status: 200,
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "x-robots-tag": "noindex",
-      },
+async function galleryHtml(
+  env: Env,
+  gid: string,
+  meta: GalleryMeta,
+): Promise<Response> {
+  const decisions = await loadDecisions(env, gid);
+  const html = renderGalleryHtml(gid, meta, decisions);
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "x-robots-tag": "noindex",
+      "cache-control": "no-store",
     },
-  );
+  });
 }
 
 function zipStream(env: Env, gid: string, meta: GalleryMeta): Response {
@@ -208,20 +217,6 @@ function sanitizeForDisposition(s: string): string {
   // browsers handle quoted ASCII-ish names well enough.
   const cleaned = s.replace(/[\r\n"\\\/]/g, "_").trim();
   return cleaned || "gallery";
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === "&"
-      ? "&amp;"
-      : c === "<"
-        ? "&lt;"
-        : c === ">"
-          ? "&gt;"
-          : c === '"'
-            ? "&quot;"
-            : "&#39;",
-  );
 }
 
 async function loadMeta(env: Env, gid: string): Promise<GalleryMeta | null> {
