@@ -1033,6 +1033,10 @@ html,
   color: #ffeb99;
 }
 
+.tile-flag.ok {
+  background: #2a8a2a;
+}
+
 .tile-flag.reject {
   background: #c44444;
 }
@@ -1265,6 +1269,12 @@ html,
   background: #c08a00;
   color: #ffeb99;
   border-color: #c08a00;
+}
+
+.flag-readout.flag-ok {
+  background: #2a8a2a;
+  color: #ffffff;
+  border-color: #2a8a2a;
 }
 
 .flag-readout.flag-reject {

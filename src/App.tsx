@@ -925,6 +925,7 @@ function App() {
         index.bundles.map((b) => [b.bundle_id, b]),
       );
       const pickRefs: BundleRef[] = [];
+      const okRefs: BundleRef[] = [];
       const rejectRefs: BundleRef[] = [];
       const clearRefs: BundleRef[] = [];
 
@@ -939,25 +940,31 @@ function App() {
           base_name: bundle.base_name,
         };
 
-        // Simple aggregation across variants:
-        //   any explicit FAV → pick (FAV beats everything)
-        //   any explicit NG  → reject
-        //   otherwise        → clear (no actionable feedback for this bundle)
-        // Clearing in the no-actionable-feedback case is essential: with
-        // local P/X toggles gone, gallery feedback is the only flag source,
-        // so re-applying must overwrite stale flags from a previous apply
-        // or a since-removed FAV vote.
+        // Aggregate variants into a single bundle-level flag, in order
+        // of decisiveness: FAV > NG > OK > (no actionable signal).
+        //   FAV beats everything (model explicitly loved at least one
+        //     variant of this bundle).
+        //   NG over OK because rejection is more decisive than approval.
+        //   OK only when the model touched the photo with a plain OK
+        //     and didn't flag any variant FAV or NG.
+        // No-signal bundles get their flag cleared so re-applying makes
+        // gallery feedback the source of truth.
         const explicitFav = group.some(
           (e) => e.explicit && e.decision === "fav",
         );
         const explicitNg = group.some(
           (e) => e.explicit && e.decision === "ng",
         );
+        const explicitOk = group.some(
+          (e) => e.explicit && e.decision === "ok",
+        );
 
         if (explicitFav) {
           pickRefs.push(ref);
         } else if (explicitNg) {
           rejectRefs.push(ref);
+        } else if (explicitOk) {
+          okRefs.push(ref);
         } else if (bundle.flag !== undefined) {
           // Only emit a clear if the bundle actually has a flag to clear.
           // Skipping the no-op case keeps the apply count honest and avoids
@@ -971,6 +978,13 @@ function App() {
           folder: index.folder_path,
           bundles: pickRefs,
           flag: "pick",
+        });
+      }
+      if (okRefs.length > 0) {
+        await invoke("set_bundle_flag", {
+          folder: index.folder_path,
+          bundles: okRefs,
+          flag: "ok",
         });
       }
       if (rejectRefs.length > 0) {
@@ -989,6 +1003,7 @@ function App() {
       }
 
       const pickIds = new Set(pickRefs.map((r) => r.bundle_id));
+      const okIds = new Set(okRefs.map((r) => r.bundle_id));
       const rejectIds = new Set(rejectRefs.map((r) => r.bundle_id));
       const clearIds = new Set(clearRefs.map((r) => r.bundle_id));
       setIndex((prev) => {
@@ -997,6 +1012,7 @@ function App() {
           ...prev,
           bundles: prev.bundles.map((b) => {
             if (pickIds.has(b.bundle_id)) return { ...b, flag: "pick" };
+            if (okIds.has(b.bundle_id)) return { ...b, flag: "ok" };
             if (rejectIds.has(b.bundle_id)) return { ...b, flag: "reject" };
             if (clearIds.has(b.bundle_id)) {
               const { flag: _flag, ...rest } = b;
@@ -1008,7 +1024,7 @@ function App() {
       });
 
       return {
-        applied: pickRefs.length + rejectRefs.length,
+        applied: pickRefs.length + okRefs.length + rejectRefs.length,
         cleared: clearRefs.length,
         notInCurrentFolder,
       };

@@ -1,6 +1,6 @@
 export type Platform = "x" | "instagram" | "note" | "other";
 export type PostBy = "self" | "model" | "other";
-export type Flag = "pick" | "reject";
+export type Flag = "pick" | "ok" | "reject";
 
 export interface PostRecord {
   id: string;

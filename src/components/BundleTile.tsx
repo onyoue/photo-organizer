@@ -58,6 +58,11 @@ function BundleTileImpl({ bundle, thumb, active, selected, size, onClick }: Prop
                 ★
               </span>
             )}
+            {bundle.flag === "ok" && (
+              <span className="tile-flag ok" title="OK (gallery OK)">
+                ✓
+              </span>
+            )}
             {bundle.flag === "reject" && (
               <span className="tile-flag reject" title="Rejected (gallery NG)">
                 ✕

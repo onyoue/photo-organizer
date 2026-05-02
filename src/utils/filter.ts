@@ -3,6 +3,7 @@ import type { BundleSummary } from "../types/bundle";
 export type FilterMode =
   | "all"
   | "pick"
+  | "ok"
   | "reject"
   | "unrated"
   | "rated4plus"
@@ -15,6 +16,7 @@ export const FILTER_LABELS: Record<FilterMode, string> = {
   // Internal filter key is still "pick" for back-compat with existing
   // sidecars; the visible label tracks the gallery-feedback semantics.
   pick: "★ FAV",
+  ok: "✓ OK",
   reject: "✕ NG",
   unrated: "Unrated",
   rated4plus: "4★+",
@@ -26,6 +28,7 @@ export const FILTER_LABELS: Record<FilterMode, string> = {
 export const FILTER_MODES: FilterMode[] = [
   "all",
   "pick",
+  "ok",
   "reject",
   "unrated",
   "rated4plus",
@@ -49,6 +52,8 @@ function matchMode(b: BundleSummary, mode: FilterMode): boolean {
       return true;
     case "pick":
       return b.flag === "pick";
+    case "ok":
+      return b.flag === "ok";
     case "reject":
       return b.flag === "reject";
     case "unrated":

@@ -195,9 +195,13 @@ export function DetailPanel({
             className={`flag-readout flag-${bundle.flag}`}
             role="status"
             aria-label="Flag (gallery feedback)"
-            title="Flags come from gallery feedback — FAV → ★, NG → ✕"
+            title="Flags come from gallery feedback — FAV → ★, OK → ✓, NG → ✕"
           >
-            {bundle.flag === "pick" ? "★ FAV" : "✕ NG"}
+            {bundle.flag === "pick"
+              ? "★ FAV"
+              : bundle.flag === "ok"
+                ? "✓ OK"
+                : "✕ NG"}
           </div>
         )}
       </div>

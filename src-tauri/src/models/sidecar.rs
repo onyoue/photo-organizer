@@ -33,7 +33,11 @@ pub enum PostBy {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Flag {
+    /// Gallery FAV vote — model explicitly favourited at least one variant.
     Pick,
+    /// Gallery OK vote — model touched the photo and confirmed (not FAV, not NG).
+    Ok,
+    /// Gallery NG vote — model rejected.
     Reject,
 }
 
