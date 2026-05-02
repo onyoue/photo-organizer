@@ -9,7 +9,10 @@ import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/th
 import type { PixelOffset, PreviewMode } from "./types/preview";
 import type { BundleSidecar, Flag, PostRecord } from "./types/sidecar";
 import type { AppSettings } from "./types/settings";
-import type { GalleryFeedbackEntry } from "./types/gallery";
+import type {
+  GalleryFeedbackEntry,
+  GalleryRecord,
+} from "./types/gallery";
 import { generatePostId } from "./components/PostsSection";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShareDialog } from "./components/ShareDialog";
@@ -79,6 +82,15 @@ function App() {
   const [showShare, setShowShare] = useState(false);
   const [showGalleries, setShowGalleries] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+
+  // Auto-dismiss the toast after a few seconds.
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(id);
+  }, [toast]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // F1 hold-to-show keyboard cheatsheet overlay. Bound at window level so it
@@ -990,6 +1002,48 @@ function App() {
     [index],
   );
 
+  const fetchFeedbackForCurrentFolder = useCallback(async () => {
+    if (!index || feedbackBusy) return;
+    const norm = (p: string) =>
+      p.replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
+    setFeedbackBusy(true);
+    setToast("ギャラリー一覧を取得中…");
+    try {
+      const all = await invoke<GalleryRecord[]>("list_galleries");
+      const target = norm(index.folder_path);
+      const matching = all.filter(
+        (g) => g.source_folder && norm(g.source_folder) === target,
+      );
+      if (matching.length === 0) {
+        setToast("このフォルダ向けのギャラリーはありません");
+        return;
+      }
+      let totalApplied = 0;
+      let totalSkipped = 0;
+      for (let i = 0; i < matching.length; i++) {
+        const g = matching[i]!;
+        setToast(
+          `取り込み中 ${i + 1}/${matching.length} · ${g.name}`,
+        );
+        const entries = await invoke<GalleryFeedbackEntry[]>(
+          "fetch_gallery_feedback",
+          { gid: g.gid },
+        );
+        const result = await applyGalleryFeedback(g.gid, entries);
+        totalApplied += result.applied;
+        totalSkipped += result.agreedWithDefault;
+      }
+      const skippedNote = totalSkipped > 0 ? ` · ${totalSkipped} 件スキップ` : "";
+      setToast(
+        `✓ ${matching.length} 件のギャラリーから ${totalApplied} 件にフラグ反映${skippedNote}`,
+      );
+    } catch (e: unknown) {
+      setToast(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setFeedbackBusy(false);
+    }
+  }, [applyGalleryFeedback, feedbackBusy, index]);
+
   const handleOpenUrl = useCallback(async (url: string) => {
     try {
       await openUrl(url);
@@ -1248,6 +1302,15 @@ function App() {
         <button
           type="button"
           className="topbar-icon"
+          onClick={fetchFeedbackForCurrentFolder}
+          disabled={!index || feedbackBusy}
+          title="現在のフォルダ向けのフィードバックを取り込み"
+        >
+          📥
+        </button>
+        <button
+          type="button"
+          className="topbar-icon"
           onClick={() => setShowGalleries(true)}
           title="Shared galleries"
         >
@@ -1273,6 +1336,12 @@ function App() {
       )}
 
       <CheatsheetOverlay visible={showCheatsheet} />
+
+      {toast && (
+        <div className="app-toast" onClick={() => setToast(null)}>
+          {toast}
+        </div>
+      )}
 
       {isDraggingOver && (
         <div className="drop-overlay" aria-hidden="true">
