@@ -31,6 +31,17 @@ pub struct FeedbackResponse {
     pub decisions: HashMap<String, Decision>,
 }
 
+/// Mirrors the Worker's StatsResponse (running totals + the free-tier
+/// R2 ceiling so the desktop UI doesn't have to hard-code it).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GalleryStats {
+    pub r2_bytes: u64,
+    pub photo_count: u64,
+    pub gallery_count: u64,
+    pub updated_at: String,
+    pub r2_bytes_limit: u64,
+}
+
 /// Thin reqwest wrapper that knows how to talk to the gallery Worker.
 /// Constructed from `GallerySettings`; bails out early if the user has
 /// not configured a worker URL or admin token.
@@ -114,6 +125,32 @@ impl GalleryClient {
             .map_err(io_err)?;
         let resp = ensure_success_returning(resp).await?;
         resp.json::<FeedbackResponse>().await.map_err(io_err)
+    }
+
+    pub async fn fetch_stats(&self) -> AppResult<GalleryStats> {
+        let url = format!("{}/admin/stats", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(io_err)?;
+        let resp = ensure_success_returning(resp).await?;
+        resp.json::<GalleryStats>().await.map_err(io_err)
+    }
+
+    pub async fn recompute_stats(&self) -> AppResult<GalleryStats> {
+        let url = format!("{}/admin/stats/recompute", self.base_url);
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(io_err)?;
+        let resp = ensure_success_returning(resp).await?;
+        resp.json::<GalleryStats>().await.map_err(io_err)
     }
 
     pub async fn delete_gallery(&self, gid: &str) -> AppResult<()> {

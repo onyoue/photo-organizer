@@ -6,10 +6,14 @@ import type {
   FeedbackResponse,
   GalleryMeta,
   PhotoEntry,
+  StatsResponse,
+  StatsTotals,
 } from "./types";
 import {
   GID_RE,
+  KV_KEY_STATS,
   PID_RE,
+  R2_FREE_LIMIT_BYTES,
   badRequest,
   json,
   kvKeyForGallery,
@@ -32,6 +36,15 @@ export async function handleAdmin(
   // segs[0] === "admin"
   const sub = segs[1];
   if (!sub) return notFound();
+
+  // Stats endpoints live under /admin/stats — handle before the GID
+  // regex so "stats" doesn't get rejected as a malformed ULID.
+  if (sub === "stats") {
+    const action = segs[2];
+    if (!action && req.method === "GET") return getStats(env);
+    if (action === "recompute" && req.method === "POST") return recomputeStats(env);
+    return notFound();
+  }
 
   if (!GID_RE.test(sub)) return notFound();
   const gid = sub;
@@ -96,6 +109,7 @@ async function createGallery(req: Request, env: Env, gid: string): Promise<Respo
   };
 
   await env.GALLERY_KV.put(kvKeyForGallery(gid), JSON.stringify(meta));
+  await bumpStats(env, { gallery_count: 1 });
   return json({ gid, finalized: false }, 201);
 }
 
@@ -127,6 +141,10 @@ async function uploadPhoto(
   // touching CPU on the way out.
   const crc = crc32(new Uint8Array(body));
 
+  // If a previous upload for this pid succeeded but the request was retried,
+  // we'd otherwise double-count R2 bytes. Subtract the existing object's
+  // size first so net delta is correct.
+  const previous = await env.GALLERY_BUCKET.head(r2KeyForPhoto(gid, pid));
   await env.GALLERY_BUCKET.put(r2KeyForPhoto(gid, pid), body, {
     httpMetadata: { contentType },
     customMetadata: {
@@ -134,6 +152,9 @@ async function uploadPhoto(
       size: body.byteLength.toString(),
     },
   });
+  const delta = body.byteLength - (previous?.size ?? 0);
+  const photoDelta = previous ? 0 : 1;
+  await bumpStats(env, { r2_bytes: delta, photo_count: photoDelta });
   return json({ pid, size: body.byteLength, crc32: crc.toString(16) });
 }
 
@@ -183,6 +204,20 @@ async function deleteGallery(env: Env, gid: string): Promise<Response> {
   const meta = await loadMeta(env, gid);
   if (!meta) return notFound();
 
+  // Sum bytes-to-decrement BEFORE delete. PhotoEntry.size is set by the
+  // desktop client at create time — fall back to R2 head if missing.
+  let bytesRemoved = 0;
+  let photosRemoved = 0;
+  for (const p of meta.photos) {
+    if (typeof p.size === "number") {
+      bytesRemoved += p.size;
+    } else {
+      const obj = await env.GALLERY_BUCKET.head(r2KeyForPhoto(gid, p.pid));
+      if (obj) bytesRemoved += obj.size;
+    }
+    photosRemoved++;
+  }
+
   // Photos
   for (const p of meta.photos) {
     await env.GALLERY_BUCKET.delete(r2KeyForPhoto(gid, p.pid));
@@ -200,7 +235,115 @@ async function deleteGallery(env: Env, gid: string): Promise<Response> {
   // Meta
   await env.GALLERY_KV.delete(kvKeyForGallery(gid));
 
+  await bumpStats(env, {
+    r2_bytes: -bytesRemoved,
+    photo_count: -photosRemoved,
+    gallery_count: -1,
+  });
+
   return json({ gid, deleted: true });
+}
+
+// ---------- stats -----------------------------------------------------------
+
+async function getStats(env: Env): Promise<Response> {
+  const totals = await readStats(env);
+  const out: StatsResponse = {
+    ...totals,
+    r2_bytes_limit: R2_FREE_LIMIT_BYTES,
+  };
+  return json(out, 200, { "cache-control": "no-store" });
+}
+
+async function recomputeStats(env: Env): Promise<Response> {
+  // Walk every gallery KV record and sum sizes from PhotoEntry.size — same
+  // value the desktop client supplies at create time and that we'd otherwise
+  // be tracking incrementally. Bounded by the gallery_count, so list calls
+  // are cheap (a few thousand at most on this free tier).
+  let r2_bytes = 0;
+  let photo_count = 0;
+  let gallery_count = 0;
+  let cursor: string | undefined;
+  do {
+    const page = await env.GALLERY_KV.list({ prefix: "gallery:", cursor });
+    for (const k of page.keys) {
+      const raw = await env.GALLERY_KV.get(k.name);
+      if (!raw) continue;
+      let meta: GalleryMeta;
+      try {
+        meta = JSON.parse(raw) as GalleryMeta;
+      } catch {
+        continue;
+      }
+      gallery_count++;
+      for (const p of meta.photos) {
+        if (typeof p.size === "number") {
+          r2_bytes += p.size;
+        } else {
+          // Pre-stats-tracking entry without a recorded size — fall back
+          // to R2 head. Slow but only matters on the first recompute.
+          const obj = await env.GALLERY_BUCKET.head(
+            r2KeyForPhoto(k.name.slice("gallery:".length), p.pid),
+          );
+          if (obj) r2_bytes += obj.size;
+        }
+        photo_count++;
+      }
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+
+  const totals: StatsTotals = {
+    r2_bytes,
+    photo_count,
+    gallery_count,
+    updated_at: new Date().toISOString(),
+  };
+  await env.GALLERY_KV.put(KV_KEY_STATS, JSON.stringify(totals));
+  const out: StatsResponse = {
+    ...totals,
+    r2_bytes_limit: R2_FREE_LIMIT_BYTES,
+  };
+  return json(out);
+}
+
+async function readStats(env: Env): Promise<StatsTotals> {
+  const raw = await env.GALLERY_KV.get(KV_KEY_STATS);
+  if (raw) {
+    try {
+      const s = JSON.parse(raw) as StatsTotals;
+      // Coerce in case an older entry is missing fields.
+      return {
+        r2_bytes: typeof s.r2_bytes === "number" ? s.r2_bytes : 0,
+        photo_count: typeof s.photo_count === "number" ? s.photo_count : 0,
+        gallery_count: typeof s.gallery_count === "number" ? s.gallery_count : 0,
+        updated_at: typeof s.updated_at === "string" ? s.updated_at : new Date(0).toISOString(),
+      };
+    } catch {
+      /* fall through */
+    }
+  }
+  return {
+    r2_bytes: 0,
+    photo_count: 0,
+    gallery_count: 0,
+    updated_at: new Date(0).toISOString(),
+  };
+}
+
+/** Read–modify–write the stats counter. KV has no atomic increment; the
+ *  single-photographer use case makes the race window negligible, and a
+ *  drift can be repaired with POST /admin/stats/recompute. */
+async function bumpStats(
+  env: Env,
+  delta: Partial<Pick<StatsTotals, "r2_bytes" | "photo_count" | "gallery_count">>,
+): Promise<void> {
+  const s = await readStats(env);
+  if (delta.r2_bytes) s.r2_bytes = Math.max(0, s.r2_bytes + delta.r2_bytes);
+  if (delta.photo_count) s.photo_count = Math.max(0, s.photo_count + delta.photo_count);
+  if (delta.gallery_count) s.gallery_count = Math.max(0, s.gallery_count + delta.gallery_count);
+  s.updated_at = new Date().toISOString();
+  await env.GALLERY_KV.put(KV_KEY_STATS, JSON.stringify(s));
 }
 
 // ---------- helpers ---------------------------------------------------------

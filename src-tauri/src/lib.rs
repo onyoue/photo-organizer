@@ -30,6 +30,8 @@ pub fn run() {
             commands::gallery::fetch_gallery_feedback,
             commands::gallery::delete_gallery,
             commands::gallery::delete_galleries_bulk,
+            commands::gallery::get_gallery_stats,
+            commands::gallery::recompute_gallery_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

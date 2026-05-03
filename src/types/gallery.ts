@@ -61,3 +61,14 @@ export interface ShareProgressEvent {
   total: number;
   filename: string;
 }
+
+/** Worker-tracked free-tier usage. Returned by `get_gallery_stats`. */
+export interface GalleryStats {
+  r2_bytes: number;
+  photo_count: number;
+  gallery_count: number;
+  /** ISO-8601 timestamp of the Worker's last counter write. */
+  updated_at: string;
+  /** R2 free-tier ceiling, echoed back so the UI doesn't hard-code it. */
+  r2_bytes_limit: number;
+}

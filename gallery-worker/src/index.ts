@@ -15,6 +15,8 @@
  *   POST   /admin/<gid>/finalize       mark gallery viewable
  *   GET    /admin/<gid>/feedback       aggregated decisions
  *   DELETE /admin/<gid>                delete gallery + photos
+ *   GET    /admin/stats                R2 bytes + photo/gallery counts
+ *   POST   /admin/stats/recompute      walk KV/R2 to rebuild the counter
  *
  *   --- public ------------------------------------------------------
  *   GET    /<gid>                      mobile gallery HTML

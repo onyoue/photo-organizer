@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use ulid::Ulid;
 
-use crate::core::gallery_client::{CreateGalleryBody, CreatePhotoEntry, GalleryClient};
+use crate::core::gallery_client::{
+    CreateGalleryBody, CreatePhotoEntry, GalleryClient, GalleryStats,
+};
 use crate::core::{app_settings, gallery_store};
 use crate::error::{AppError, AppResult};
 use crate::models::gallery::{GalleryPhotoRecord, GalleryRecord};
@@ -368,6 +370,26 @@ pub async fn delete_galleries_bulk(
         }
     }
     Ok(BulkDeleteResult { deleted, failed })
+}
+
+#[tauri::command]
+pub async fn get_gallery_stats(app: AppHandle) -> AppResult<GalleryStats> {
+    let dir = app_data_dir(&app)?;
+    let settings = tauri::async_runtime::spawn_blocking(move || app_settings::read(&dir))
+        .await
+        .map_err(|e| AppError::InvalidArgument(format!("settings task: {e}")))?;
+    let client = GalleryClient::new(&settings.gallery)?;
+    client.fetch_stats().await
+}
+
+#[tauri::command]
+pub async fn recompute_gallery_stats(app: AppHandle) -> AppResult<GalleryStats> {
+    let dir = app_data_dir(&app)?;
+    let settings = tauri::async_runtime::spawn_blocking(move || app_settings::read(&dir))
+        .await
+        .map_err(|e| AppError::InvalidArgument(format!("settings task: {e}")))?;
+    let client = GalleryClient::new(&settings.gallery)?;
+    client.recompute_stats().await
 }
 
 #[tauri::command]

@@ -37,3 +37,20 @@ export interface FeedbackResponse {
   default_decision: DefaultDecision;
   decisions: Record<string, Decision>;
 }
+
+/** Running totals stored in KV at `stats:totals`. Maintained by
+ *  increment-on-success in the admin handlers; can be rebuilt with
+ *  POST /admin/stats/recompute if it ever drifts. */
+export interface StatsTotals {
+  r2_bytes: number;
+  photo_count: number;
+  gallery_count: number;
+  /** ISO-8601 timestamp of the last write to this object. */
+  updated_at: string;
+}
+
+/** Response from GET /admin/stats — totals plus the free-tier ceiling
+ *  the desktop UI compares against. */
+export interface StatsResponse extends StatsTotals {
+  r2_bytes_limit: number;
+}

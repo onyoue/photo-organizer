@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { BundleSummary } from "../types/bundle";
 import type {
   Decision,
+  GalleryStats,
   ShareGalleryArgs,
   ShareGalleryResult,
   ShareProgressEvent,
 } from "../types/gallery";
+import { formatSize } from "../utils/format";
 import { previewVariants } from "../utils/preview";
 
 interface Props {
@@ -41,9 +43,11 @@ function basename(p: string): string {
 function resolveShareablePhotos(bundles: BundleSummary[]): {
   photos: ShareablePhoto[];
   excluded: BundleSummary[];
+  plannedBytes: number;
 } {
   const photos: ShareablePhoto[] = [];
   const excluded: BundleSummary[] = [];
+  let plannedBytes = 0;
   for (const b of bundles) {
     const variants = previewVariants(b);
     if (variants.length === 0) {
@@ -60,9 +64,10 @@ function resolveShareablePhotos(bundles: BundleSummary[]): {
         source_path: v.path,
         filename: basename(v.path),
       });
+      plannedBytes += v.size;
     }
   }
-  return { photos, excluded };
+  return { photos, excluded, plannedBytes };
 }
 
 export function ShareDialog({
@@ -82,10 +87,39 @@ export function ShareDialog({
   const [copied, setCopied] = useState(false);
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
-  const { photos, excluded } = useMemo(
+  const { photos, excluded, plannedBytes } = useMemo(
     () => resolveShareablePhotos(selectedBundles),
     [selectedBundles],
   );
+
+  const [stats, setStats] = useState<GalleryStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [statsBusy, setStatsBusy] = useState(false);
+
+  const refreshStats = useCallback(async (mode: "fetch" | "recompute") => {
+    setStatsBusy(true);
+    setStatsError(null);
+    try {
+      const cmd = mode === "recompute" ? "recompute_gallery_stats" : "get_gallery_stats";
+      const out = await invoke<GalleryStats>(cmd);
+      setStats(out);
+    } catch (e: unknown) {
+      setStatsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStatsBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshStats("fetch");
+  }, [refreshStats]);
+
+  // Refresh after a successful upload — the Worker has bumped its counter
+  // by exactly plannedBytes, but pulling the authoritative value avoids
+  // any drift from concurrent operations.
+  useEffect(() => {
+    if (result) void refreshStats("fetch");
+  }, [result, refreshStats]);
 
   useEffect(() => {
     return () => {
@@ -182,6 +216,14 @@ export function ShareDialog({
         </div>
 
         <div className="settings-body">
+          <StatsBanner
+            stats={stats}
+            plannedBytes={!result ? plannedBytes : 0}
+            busy={statsBusy}
+            error={statsError}
+            onRefresh={() => void refreshStats("fetch")}
+            onRecompute={() => void refreshStats("recompute")}
+          />
           {!result ? (
             <>
               <div className="settings-field">
@@ -305,6 +347,116 @@ export function ShareDialog({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+interface StatsBannerProps {
+  stats: GalleryStats | null;
+  /** Bytes about to be uploaded (0 once result exists). */
+  plannedBytes: number;
+  busy: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onRecompute: () => void;
+}
+
+function StatsBanner({
+  stats,
+  plannedBytes,
+  busy,
+  error,
+  onRefresh,
+  onRecompute,
+}: StatsBannerProps) {
+  if (error) {
+    return (
+      <div className="share-stats share-stats-error">
+        <span>無料枠の取得に失敗: {error}</span>
+        <button type="button" onClick={onRefresh} disabled={busy} title="再取得">
+          ↻
+        </button>
+      </div>
+    );
+  }
+  if (!stats) {
+    return (
+      <div className="share-stats share-stats-loading">
+        <span>無料枠の使用状況を読み込み中…</span>
+      </div>
+    );
+  }
+
+  const limit = stats.r2_bytes_limit || 1;
+  const projected = stats.r2_bytes + plannedBytes;
+  const usedPct = Math.min(100, Math.round((stats.r2_bytes / limit) * 100));
+  const projectedPct = Math.min(100, Math.round((projected / limit) * 100));
+  const overage = projected > limit;
+  const tone = overage
+    ? "share-stats-danger"
+    : projectedPct >= 80
+      ? "share-stats-warn"
+      : "";
+
+  return (
+    <div className={`share-stats ${tone}`.trim()}>
+      <div className="share-stats-row">
+        <span className="share-stats-label">R2 ストレージ</span>
+        <span className="share-stats-value">
+          {formatSize(stats.r2_bytes)} / {formatSize(stats.r2_bytes_limit)}
+          {plannedBytes > 0 && (
+            <>
+              {" "}
+              <span className="share-stats-projection">
+                → {formatSize(projected)} ({projectedPct}%)
+              </span>
+            </>
+          )}
+        </span>
+      </div>
+      <div className="share-stats-bar">
+        <div
+          className="share-stats-bar-used"
+          style={{ width: `${usedPct}%` }}
+        />
+        {plannedBytes > 0 && (
+          <div
+            className="share-stats-bar-add"
+            style={{
+              left: `${usedPct}%`,
+              width: `${Math.max(0, projectedPct - usedPct)}%`,
+            }}
+          />
+        )}
+      </div>
+      <div className="share-stats-row share-stats-meta">
+        <span>
+          写真 {stats.photo_count} 枚 · ギャラリー {stats.gallery_count} 件
+        </span>
+        <span className="share-stats-actions">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={busy}
+            title="再取得"
+          >
+            ↻
+          </button>
+          <button
+            type="button"
+            onClick={onRecompute}
+            disabled={busy}
+            title="Worker側で全件スキャンして再計算（数値がずれた場合に）"
+          >
+            再計算
+          </button>
+        </span>
+      </div>
+      {overage && (
+        <div className="share-stats-overage">
+          ⚠ アップロード後に無料枠（10 GB）を超過します
+        </div>
+      )}
     </div>
   );
 }
