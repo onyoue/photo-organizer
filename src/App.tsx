@@ -398,9 +398,36 @@ function App() {
     );
   }, [activeVariants, previewVariantIndex]);
 
-  const previewSrc = useMemo(() => {
-    if (!currentPreviewVariant || !index) return null;
-    return joinPath(index.folder_path, currentPreviewVariant.path);
+  // Resolved preview path — for RAW variants this is the cached embedded
+  // JPEG (extracted on demand by `ensure_preview_image_path`); for
+  // everything else it's just folder + variant.path resolved synchronously.
+  // Async resolve happens in an effect so the UI doesn't block while RAW
+  // extraction runs; in-flight resolutions are cancelled when the variant
+  // changes to avoid flashing the wrong image.
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!currentPreviewVariant || !index) {
+      setPreviewSrc(null);
+      return;
+    }
+    if (currentPreviewVariant.role !== "raw") {
+      setPreviewSrc(joinPath(index.folder_path, currentPreviewVariant.path));
+      return;
+    }
+    let cancelled = false;
+    void invoke<string>("ensure_preview_image_path", {
+      folder: index.folder_path,
+      source: currentPreviewVariant.path,
+    })
+      .then((path) => {
+        if (!cancelled) setPreviewSrc(path);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewSrc(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [currentPreviewVariant, index]);
 
   const cyclePreviewVariant = useCallback(

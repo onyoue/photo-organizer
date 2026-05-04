@@ -24,13 +24,18 @@ function jpgRoleSorted(b: BundleSummary): {
  * developed variants follow in mtime-descending order, with the in-camera
  * appended last when present. Filters to formats the webview can actually
  * render — TIFFs are bundled but excluded here to spare the user a broken
- * preview icon.
+ * preview icon. RAW-only bundles fall through to the first RAW so the
+ * preview pane can show the camera-embedded JPEG (resolved via the
+ * `ensure_preview_image_path` command).
  */
 export function previewVariants(b: BundleSummary): BundleFile[] {
   const { developed, inCamera } = jpgRoleSorted(b);
-  return [...developed, ...inCamera].filter((f) =>
+  const renderable = [...developed, ...inCamera].filter((f) =>
     RENDERABLE_IMAGE.test(f.path),
   );
+  if (renderable.length > 0) return renderable;
+  const raw = b.files.find((f) => f.role === "raw");
+  return raw ? [raw] : [];
 }
 
 /**

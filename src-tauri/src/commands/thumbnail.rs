@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+use crate::core::preview_cache;
 use crate::core::thumbnail;
 use crate::error::AppResult;
 
@@ -38,6 +39,26 @@ pub async fn ensure_thumbnail(folder: String, file: String) -> AppResult<String>
     })
     .await
     .expect("thumbnail task panicked")
+}
+
+/// Resolve a renderable image path for the preview pane / 100% view. For
+/// non-RAW sources this is just the source path itself; for RAW it triggers
+/// extraction of the camera-embedded preview JPEG into the per-folder
+/// preview cache and returns that cached path. Either way the returned
+/// string is fed straight to convertFileSrc on the frontend.
+#[tauri::command]
+pub async fn ensure_preview_image_path(
+    folder: String,
+    source: String,
+) -> AppResult<String> {
+    let folder = PathBuf::from(folder);
+    let source_path = resolve(&folder, &source);
+    tauri::async_runtime::spawn_blocking(move || {
+        preview_cache::ensure_preview_path(&folder, &source_path)
+            .map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
+    .expect("preview path task panicked")
 }
 
 #[tauri::command]

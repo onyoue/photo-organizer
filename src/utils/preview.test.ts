@@ -22,8 +22,8 @@ function bundle(files: BundleFile[]): BundleSummary {
 }
 
 describe("selectPreviewFile", () => {
-  it("returns null for a RAW-only bundle (no preview source available)", () => {
-    expect(selectPreviewFile(bundle([file("raw", "a.dng", "")]))).toBeNull();
+  it("falls back to the RAW file for a RAW-only bundle (resolved to embedded JPEG by ensure_preview_image_path)", () => {
+    expect(selectPreviewFile(bundle([file("raw", "a.dng", "")]))).toBe("a.dng");
   });
 
   it("returns the in-camera JPG when no developed variant exists", () => {
@@ -87,8 +87,10 @@ describe("previewVariants", () => {
     ]);
   });
 
-  it("returns empty for a RAW-only bundle", () => {
-    expect(previewVariants(bundle([file("raw", "x.dng", "")]))).toEqual([]);
+  it("falls back to the single RAW for a RAW-only bundle", () => {
+    expect(previewVariants(bundle([file("raw", "x.dng", "")])).map((f) => f.path)).toEqual(
+      ["x.dng"],
+    );
   });
 
   it("returns just in-camera when no developed exist", () => {

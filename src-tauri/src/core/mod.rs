@@ -6,6 +6,7 @@ pub mod gallery_client;
 pub mod gallery_store;
 pub mod index_cache;
 pub mod phash;
+pub mod preview_cache;
 pub mod scanner;
 pub mod sidecar;
 pub mod thumbnail;

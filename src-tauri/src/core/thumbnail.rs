@@ -90,9 +90,7 @@ pub fn ensure_thumbnail(folder: &Path, source: &Path) -> AppResult<PathBuf> {
 }
 
 fn generate_thumbnail(input: &Path, output: &Path) -> AppResult<()> {
-    let img = load_source_image(input)?;
-    let orient = read_exif_orientation(input).unwrap_or(1);
-    let oriented = apply_orientation(img, orient);
+    let oriented = load_oriented_image(input)?;
     let resized = oriented.resize(THUMB_LONG_EDGE, THUMB_LONG_EDGE, FilterType::Triangle);
     let rgb = resized.to_rgb8();
     let (w, h) = (rgb.width(), rgb.height());
@@ -112,6 +110,23 @@ fn generate_thumbnail(input: &Path, output: &Path) -> AppResult<()> {
 /// always reflect the same source bytes.
 pub fn load_for_hashing(path: &Path) -> AppResult<DynamicImage> {
     load_source_image(path)
+}
+
+/// True when `path` is a camera-RAW file we route through rawler / the
+/// embedded-JPEG fallback. Exposed for the preview-cache module so it
+/// uses the same classification.
+pub fn is_raw_path(path: &Path) -> bool {
+    is_raw_extension(path)
+}
+
+/// Load + EXIF-orient an image at `path`. Single-step variant of
+/// `load_source_image` followed by orientation correction; shared between
+/// the thumbnail and preview-cache pipelines so both end up with the same
+/// rotation.
+pub fn load_oriented_image(path: &Path) -> AppResult<DynamicImage> {
+    let img = load_source_image(path)?;
+    let orient = read_exif_orientation(path).unwrap_or(1);
+    Ok(apply_orientation(img, orient))
 }
 
 fn is_raw_extension(path: &Path) -> bool {
