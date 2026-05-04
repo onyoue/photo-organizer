@@ -16,6 +16,7 @@ import type {
 import { generatePostId } from "./components/PostsSection";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { WelcomeDialog } from "./components/WelcomeDialog";
+import { SearchDialog } from "./components/SearchDialog";
 import { ShareDialog } from "./components/ShareDialog";
 import { GalleriesDialog, type ApplyResult } from "./components/GalleriesDialog";
 import { patchBundleFlag } from "./utils/flagPatch";
@@ -82,6 +83,7 @@ function App() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showGalleries, setShowGalleries] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
@@ -1373,6 +1375,14 @@ function App() {
         <button
           type="button"
           className="topbar-icon"
+          onClick={() => setShowSearch(true)}
+          title="画像から逆引き（フォルダ横断 pHash 検索）"
+        >
+          🔍
+        </button>
+        <button
+          type="button"
+          className="topbar-icon"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >
@@ -1384,6 +1394,18 @@ function App() {
         <WelcomeDialog
           onDismiss={() => void dismissWelcome()}
           onOpenSettings={() => setShowSettings(true)}
+        />
+      )}
+
+      {showSearch && (
+        <SearchDialog
+          initialRoot={appSettings.search_root ?? null}
+          onClose={() => setShowSearch(false)}
+          onRootSelected={async (root) => {
+            const next = { ...appSettings, search_root: root };
+            await invoke("save_app_settings", { settings: next });
+            setAppSettings(next);
+          }}
         />
       )}
 

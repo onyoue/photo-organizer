@@ -83,6 +83,12 @@ pub struct AppSettings {
     /// straight into the app.
     #[serde(default)]
     pub welcome_seen: bool,
+
+    /// Last-used search root for the cross-folder image search dialog.
+    /// Remembered between launches because the photographer's photo library
+    /// is in one place and gets searched repeatedly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_root: Option<String>,
 }
 
 impl AppSettings {

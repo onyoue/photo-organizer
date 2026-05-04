@@ -19,5 +19,7 @@ export interface AppSettings {
   gallery?: GallerySettings;
   /** Flipped to true once the first-run welcome dialog is dismissed. */
   welcome_seen?: boolean;
+  /** Last-used cross-folder image-search root, remembered across launches. */
+  search_root?: string;
 }
 
