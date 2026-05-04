@@ -76,6 +76,13 @@ pub struct AppSettings {
     /// Photo gallery share configuration (Cloudflare Worker URL + token).
     #[serde(default)]
     pub gallery: GallerySettings,
+
+    /// Set to true after the user dismisses the first-run welcome dialog.
+    /// New installs default to false → dialog shows once, "閉じる" flips
+    /// this to true and saves immediately so subsequent launches go
+    /// straight into the app.
+    #[serde(default)]
+    pub welcome_seen: bool,
 }
 
 impl AppSettings {

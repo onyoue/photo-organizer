@@ -15,6 +15,7 @@ import type {
 } from "./types/gallery";
 import { generatePostId } from "./components/PostsSection";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { WelcomeDialog } from "./components/WelcomeDialog";
 import { ShareDialog } from "./components/ShareDialog";
 import { GalleriesDialog, type ApplyResult } from "./components/GalleriesDialog";
 import { patchBundleFlag } from "./utils/flagPatch";
@@ -80,6 +81,7 @@ function App() {
     active_raw_developer_index: 0,
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showGalleries, setShowGalleries] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
@@ -153,7 +155,23 @@ function App() {
 
   // Load app-wide settings on mount.
   useEffect(() => {
-    void invoke<AppSettings>("get_app_settings").then((s) => setAppSettings(s));
+    void invoke<AppSettings>("get_app_settings").then((s) => {
+      setAppSettings(s);
+      // First launch (or pre-`welcome_seen` install) → show the welcome
+      // overlay once. The user dismissing it persists `welcome_seen: true`.
+      if (!s.welcome_seen) setShowWelcome(true);
+    });
+  }, []);
+
+  const dismissWelcome = useCallback(async () => {
+    setShowWelcome(false);
+    // Persist immediately so a crash before the user touches anything else
+    // doesn't make the dialog reappear next launch.
+    setAppSettings((prev) => {
+      const next = { ...prev, welcome_seen: true };
+      void invoke("save_app_settings", { settings: next });
+      return next;
+    });
   }, []);
 
   const saveSettings = useCallback(async (next: AppSettings) => {
@@ -1361,6 +1379,13 @@ function App() {
           ⚙
         </button>
       </header>
+
+      {showWelcome && (
+        <WelcomeDialog
+          onDismiss={() => void dismissWelcome()}
+          onOpenSettings={() => setShowSettings(true)}
+        />
+      )}
 
       {showSettings && (
         <SettingsDialog

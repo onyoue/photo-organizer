@@ -17,5 +17,7 @@ export interface AppSettings {
   /** Legacy single-path field — read-migrated by the backend on load. */
   raw_developer_path?: string;
   gallery?: GallerySettings;
+  /** Flipped to true once the first-run welcome dialog is dismissed. */
+  welcome_seen?: boolean;
 }
 
