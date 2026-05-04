@@ -35,6 +35,13 @@ pub struct GalleryRecord {
     /// step warn when a different folder is currently open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_folder: Option<String>,
+    /// Optional model name attached at share time. Drives per-model
+    /// feedback bucketing on apply — bundles store decisions under this
+    /// key in their sidecar's `feedback_by_model` map. Empty / None for
+    /// galleries shared without a specific model (e.g. group / pair
+    /// gallery duplicated to each recipient).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_name: Option<String>,
     pub photos: Vec<GalleryPhotoRecord>,
     /// Last fetched per-pid decisions from the Worker. Kept here so the
     /// galleries dialog can display state without re-running fetch_feedback

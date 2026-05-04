@@ -13,6 +13,7 @@ interface Props {
   onApplyFeedback: (
     gid: string,
     entries: GalleryFeedbackEntry[],
+    modelName?: string,
   ) => Promise<ApplyResult>;
 }
 
@@ -164,7 +165,7 @@ export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Pro
         "fetch_gallery_feedback",
         { gid: g.gid },
       );
-      const result = await onApplyFeedback(g.gid, entries);
+      const result = await onApplyFeedback(g.gid, entries, g.model_name);
       const summary = formatApplySummary(result);
       setStatusByGid((prev) => ({ ...prev, [g.gid]: summary }));
       // Refresh galleries so the cached last_decisions / last_fetched_at
@@ -322,6 +323,12 @@ export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Pro
                         />
                         <span className="gallery-name" title={g.name}>
                           {g.name}
+                          {g.model_name && (
+                            <span className="gallery-model" title="モデル名">
+                              {" "}
+                              · 👤 {g.model_name}
+                            </span>
+                          )}
                         </span>
                         <span className="gallery-expiry">
                           {relativeExpiry(g.expires_at)} · {g.photos.length} 枚

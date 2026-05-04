@@ -437,6 +437,11 @@ html,
   white-space: nowrap;
 }
 
+.gallery-model {
+  font-weight: 500;
+  color: #5a6f3a;
+}
+
 .gallery-expiry {
   font-size: 11px;
   color: #777;
@@ -1418,6 +1423,62 @@ html,
   border-color: #c44444;
 }
 
+.model-feedback {
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  border: 1px solid #d6d6d6;
+  border-radius: 4px;
+  background: #fafafa;
+  font-size: 12px;
+}
+
+.model-feedback-label {
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 4px;
+}
+
+.model-feedback-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-feedback-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.model-feedback-name {
+  font-weight: 500;
+}
+
+.model-feedback-flag {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.model-feedback-row.flag-pick {
+  background: rgba(192, 138, 0, 0.12);
+  color: #6a4a00;
+}
+
+.model-feedback-row.flag-ok {
+  background: rgba(42, 138, 42, 0.12);
+  color: #1f5c1f;
+}
+
+.model-feedback-row.flag-reject {
+  background: rgba(196, 68, 68, 0.12);
+  color: #802222;
+}
+
 .detail-files {
   list-style: none;
   margin: 0;
@@ -1994,6 +2055,25 @@ html,
   }
   .share-stats-overage {
     color: #ff8a8a;
+  }
+  .model-feedback {
+    background: #1a1a1a;
+    border-color: #4a4a4a;
+  }
+  .model-feedback-label {
+    color: #b0b0b0;
+  }
+  .model-feedback-row.flag-pick {
+    background: rgba(192, 138, 0, 0.22);
+    color: #ffeb99;
+  }
+  .model-feedback-row.flag-ok {
+    background: rgba(42, 138, 42, 0.22);
+    color: #b6e8b6;
+  }
+  .model-feedback-row.flag-reject {
+    background: rgba(196, 68, 68, 0.22);
+    color: #ffbcbc;
   }
   .gallery-item {
     background: #1f1f1f;

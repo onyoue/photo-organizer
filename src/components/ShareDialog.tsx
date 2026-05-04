@@ -78,6 +78,7 @@ export function ShareDialog({
   onClose,
 }: Props) {
   const [name, setName] = useState(defaultName);
+  const [modelName, setModelName] = useState("");
   const [days, setDays] = useState<number>(7);
   const [decision, setDecision] = useState<Decision>(defaultDecision);
   const [progress, setProgress] = useState<ShareProgressEvent | null>(null);
@@ -150,11 +151,13 @@ export function ShareDialog({
       );
       unlistenRef.current = unlisten;
 
+      const trimmedModel = modelName.trim();
       const args: ShareGalleryArgs = {
         folder,
         name: name.trim(),
         expires_in_days: days,
         default_decision: decision,
+        ...(trimmedModel ? { model_name: trimmedModel } : {}),
         photos: photos.map(({ bundle_id, source_path }) => ({
           bundle_id,
           source_path,
@@ -234,6 +237,21 @@ export function ShareDialog({
                   onChange={(e) => setName(e.target.value)}
                   disabled={busy}
                   placeholder="例: 山田さん 2026-05-02"
+                  className="share-name-input"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label>モデル名（任意）</label>
+                <p className="settings-hint">
+                  入力するとフィードバックがこのモデル名で仕分けされます。ペア撮影で別々に送るときなどに。空欄なら従来どおり単一フラグとして取り込み。
+                </p>
+                <input
+                  type="text"
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
+                  disabled={busy}
+                  placeholder="例: alice / 山田 / 二人組"
                   className="share-name-input"
                 />
               </div>

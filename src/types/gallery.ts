@@ -21,6 +21,10 @@ export interface GalleryRecord {
   /** Source folder the photos came from. Used to warn the user if they
    * try to apply feedback while a different folder is open. */
   source_folder?: string;
+  /** Optional model name attached at share time. Drives per-model
+   *  feedback bucketing on apply. Empty / absent for galleries shared
+   *  without a specific model. */
+  model_name?: string;
   photos: GalleryPhotoRecord[];
   /** Cached per-pid decisions from the last successful feedback fetch. */
   last_decisions?: Record<string, Decision>;
@@ -47,6 +51,9 @@ export interface ShareGalleryArgs {
   name: string;
   expires_in_days: number;
   default_decision: Decision;
+  /** Optional model name. When set, decisions returned by this gallery
+   *  are bucketed under this key in `feedback_by_model`. */
+  model_name?: string;
   photos: ShareGalleryPhoto[];
 }
 

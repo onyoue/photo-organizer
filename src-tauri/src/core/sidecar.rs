@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -5,7 +6,7 @@ use chrono::Utc;
 use serde::Deserialize;
 
 use crate::error::AppResult;
-use crate::models::sidecar::{BundleSidecar, Flag};
+use crate::models::sidecar::{aggregate_flag, BundleSidecar, Flag};
 
 pub const SIDECAR_VERSION: u32 = 1;
 const SUFFIX: &str = ".photoorg.json";
@@ -62,6 +63,7 @@ fn load_or_default(folder: &Path, bundle: &BundleRef) -> AppResult<BundleSidecar
         base_name: bundle.base_name.clone(),
         rating: None,
         flag: None,
+        feedback_by_model: HashMap::new(),
         tags: vec![],
         posts: vec![],
         created_at: now.clone(),
@@ -90,8 +92,49 @@ pub fn apply_rating(folder: &Path, bundle: &BundleRef, rating: Option<u8>) -> Ap
     apply(folder, bundle, |s| s.rating = rating)
 }
 
-pub fn apply_flag(folder: &Path, bundle: &BundleRef, flag: Option<Flag>) -> AppResult<()> {
-    apply(folder, bundle, |s| s.flag = flag)
+/// Apply a flag from gallery feedback.
+///
+/// `model_name = None` is the legacy single-flag path: writes go directly to
+/// the top-level `flag` field, leaving `feedback_by_model` untouched. Used
+/// by anonymous galleries (no model name set) when no per-model entries
+/// exist yet.
+///
+/// `model_name = Some(name)` is the multi-model path: the verdict is stored
+/// under that key in `feedback_by_model` and the top-level `flag` is
+/// derived as the aggregate. The first multi-model write to a sidecar that
+/// already has a legacy `flag` migrates that legacy flag into the map under
+/// the empty-string key (= "anonymous prior verdict") so historical data
+/// isn't silently dropped.
+pub fn apply_flag(
+    folder: &Path,
+    bundle: &BundleRef,
+    flag: Option<Flag>,
+    model_name: Option<&str>,
+) -> AppResult<()> {
+    apply(folder, bundle, |s| {
+        let has_map = !s.feedback_by_model.is_empty();
+        if model_name.is_none() && !has_map {
+            // Pure legacy: just set/clear top-level flag.
+            s.flag = flag;
+            return;
+        }
+        // Multi-model path. Migrate any legacy flag into the map under "".
+        if !has_map {
+            if let Some(legacy) = s.flag {
+                s.feedback_by_model.insert(String::new(), legacy);
+            }
+        }
+        let key = model_name.unwrap_or("").to_string();
+        match flag {
+            Some(f) => {
+                s.feedback_by_model.insert(key, f);
+            }
+            None => {
+                s.feedback_by_model.remove(&key);
+            }
+        }
+        s.flag = aggregate_flag(&s.feedback_by_model);
+    })
 }
 
 pub fn apply_tags(folder: &Path, bundle: &BundleRef, tags: Vec<String>) -> AppResult<()> {
@@ -118,6 +161,7 @@ mod tests {
             base_name: base.to_string(),
             rating: None,
             flag: None,
+            feedback_by_model: HashMap::new(),
             tags: vec![],
             posts: vec![PostRecord {
                 id: Ulid::new().to_string(),
@@ -218,15 +262,66 @@ mod tests {
     }
 
     #[test]
-    fn apply_flag_toggles_through_states() {
+    fn apply_flag_toggles_through_states_legacy() {
         let dir = tempdir();
         let b = bref("DSC_F1");
-        apply_flag(&dir, &b, Some(Flag::Pick)).unwrap();
-        assert_eq!(read(&dir, "DSC_F1").unwrap().unwrap().flag, Some(Flag::Pick));
-        apply_flag(&dir, &b, Some(Flag::Reject)).unwrap();
+        apply_flag(&dir, &b, Some(Flag::Pick), None).unwrap();
+        let s = read(&dir, "DSC_F1").unwrap().unwrap();
+        assert_eq!(s.flag, Some(Flag::Pick));
+        assert!(s.feedback_by_model.is_empty(), "legacy mode shouldn't create the map");
+        apply_flag(&dir, &b, Some(Flag::Reject), None).unwrap();
         assert_eq!(read(&dir, "DSC_F1").unwrap().unwrap().flag, Some(Flag::Reject));
-        apply_flag(&dir, &b, None).unwrap();
+        apply_flag(&dir, &b, None, None).unwrap();
         assert!(read(&dir, "DSC_F1").unwrap().is_none());
+    }
+
+    #[test]
+    fn apply_flag_per_model_stores_in_map_and_derives_aggregate() {
+        let dir = tempdir();
+        let b = bref("DSC_F2");
+        apply_flag(&dir, &b, Some(Flag::Pick), Some("alice")).unwrap();
+        apply_flag(&dir, &b, Some(Flag::Reject), Some("bob")).unwrap();
+        let s = read(&dir, "DSC_F2").unwrap().unwrap();
+        assert_eq!(s.feedback_by_model.get("alice"), Some(&Flag::Pick));
+        assert_eq!(s.feedback_by_model.get("bob"), Some(&Flag::Reject));
+        // any-FAV wins over any-NG
+        assert_eq!(s.flag, Some(Flag::Pick));
+    }
+
+    #[test]
+    fn apply_flag_aggregate_drops_to_reject_when_fav_cleared() {
+        let dir = tempdir();
+        let b = bref("DSC_F3");
+        apply_flag(&dir, &b, Some(Flag::Pick), Some("alice")).unwrap();
+        apply_flag(&dir, &b, Some(Flag::Reject), Some("bob")).unwrap();
+        apply_flag(&dir, &b, None, Some("alice")).unwrap();
+        let s = read(&dir, "DSC_F3").unwrap().unwrap();
+        assert!(!s.feedback_by_model.contains_key("alice"));
+        assert_eq!(s.feedback_by_model.get("bob"), Some(&Flag::Reject));
+        assert_eq!(s.flag, Some(Flag::Reject));
+    }
+
+    #[test]
+    fn apply_flag_first_per_model_write_migrates_legacy_flag_to_anonymous_key() {
+        let dir = tempdir();
+        let b = bref("DSC_F4");
+        apply_flag(&dir, &b, Some(Flag::Ok), None).unwrap();
+        // Legacy state established. Now a per-model gallery's feedback comes in.
+        apply_flag(&dir, &b, Some(Flag::Pick), Some("alice")).unwrap();
+        let s = read(&dir, "DSC_F4").unwrap().unwrap();
+        assert_eq!(s.feedback_by_model.get(""), Some(&Flag::Ok));
+        assert_eq!(s.feedback_by_model.get("alice"), Some(&Flag::Pick));
+        assert_eq!(s.flag, Some(Flag::Pick));
+    }
+
+    #[test]
+    fn apply_flag_clearing_last_per_model_entry_clears_aggregate() {
+        let dir = tempdir();
+        let b = bref("DSC_F5");
+        apply_flag(&dir, &b, Some(Flag::Reject), Some("alice")).unwrap();
+        apply_flag(&dir, &b, None, Some("alice")).unwrap();
+        // Sidecar should be deleted (empty payload).
+        assert!(read(&dir, "DSC_F5").unwrap().is_none());
     }
 
     #[test]

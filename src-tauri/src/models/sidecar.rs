@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -62,8 +64,16 @@ pub struct BundleSidecar {
     pub base_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rating: Option<u8>,
+    /// Aggregate flag — derived from `feedback_by_model` when present, or
+    /// set directly in single-model (legacy) mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flag: Option<Flag>,
+    /// Per-model gallery feedback. Key is the gallery's `model_name`
+    /// (empty string for galleries without a model name = anonymous).
+    /// Absent on legacy single-flag sidecars; populated as soon as a
+    /// model-tagged gallery's feedback gets applied.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub feedback_by_model: HashMap<String, Flag>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
     #[serde(default)]
@@ -80,5 +90,21 @@ impl BundleSidecar {
             && self.tags.is_empty()
             && self.rating.is_none()
             && self.flag.is_none()
+            && self.feedback_by_model.is_empty()
+    }
+}
+
+/// Reduce per-model verdicts to a single aggregate flag using the same
+/// precedence as the gallery feedback application: any FAV → Pick,
+/// otherwise any NG → Reject, otherwise any OK → Ok, otherwise None.
+pub fn aggregate_flag(map: &HashMap<String, Flag>) -> Option<Flag> {
+    if map.values().any(|f| matches!(f, Flag::Pick)) {
+        Some(Flag::Pick)
+    } else if map.values().any(|f| matches!(f, Flag::Reject)) {
+        Some(Flag::Reject)
+    } else if map.values().any(|f| matches!(f, Flag::Ok)) {
+        Some(Flag::Ok)
+    } else {
+        None
     }
 }

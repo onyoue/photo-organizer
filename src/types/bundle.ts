@@ -17,7 +17,12 @@ export interface BundleSummary {
   post_platforms: string[];
   has_model_post: boolean;
   rating?: number;
+  /** Aggregate flag derived from `feedback_by_model` (any FAV → pick / any
+   *  NG → reject / any OK → ok), or set directly in legacy single-flag mode. */
   flag?: Flag;
+  /** Per-model gallery verdicts. Empty / absent for legacy bundles whose
+   *  flag was set before per-model support landed. */
+  feedback_by_model?: Record<string, Flag>;
   tags?: string[];
 }
 

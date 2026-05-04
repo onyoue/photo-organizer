@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::models::sidecar::Flag;
@@ -38,9 +40,16 @@ pub struct BundleSummary {
     /// Sidecar-derived 1..=5 rating, None for unrated (REQUIREMENTS F4.1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rating: Option<u8>,
-    /// Sidecar-derived pick/reject flag (REQUIREMENTS F4.1).
+    /// Sidecar-derived aggregate flag (any FAV → pick / any NG → reject /
+    /// any OK → ok). For multi-model bundles this is a reduction of
+    /// `feedback_by_model`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flag: Option<Flag>,
+    /// Per-model gallery verdicts. Empty for legacy single-flag bundles.
+    /// Key is the gallery's `model_name` (empty string for galleries that
+    /// were shared without one).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub feedback_by_model: HashMap<String, Flag>,
     /// Sidecar-derived freeform tags (REQUIREMENTS F4.2).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,

@@ -71,6 +71,7 @@ mod tests {
             expires_at: "2026-05-08T00:00:00Z".into(),
             default_decision: Decision::Ok,
             source_folder: Some("C:/x".into()),
+            model_name: None,
             photos: vec![GalleryPhotoRecord {
                 pid: "p001".into(),
                 bundle_id: "b1".into(),

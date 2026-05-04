@@ -17,6 +17,7 @@ import { generatePostId } from "./components/PostsSection";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShareDialog } from "./components/ShareDialog";
 import { GalleriesDialog, type ApplyResult } from "./components/GalleriesDialog";
+import { patchBundleFlag } from "./utils/flagPatch";
 import { CheatsheetOverlay } from "./components/CheatsheetOverlay";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
@@ -900,8 +901,18 @@ function App() {
   );
 
   const applyGalleryFeedback = useCallback(
-    async (gid: string, entries: GalleryFeedbackEntry[]): Promise<ApplyResult> => {
+    async (
+      gid: string,
+      entries: GalleryFeedbackEntry[],
+      modelName?: string,
+    ): Promise<ApplyResult> => {
       void gid;
+      // Per-model bucketing key. Empty string is the legacy / anonymous
+      // bucket inside `feedback_by_model`; null tells the Tauri command
+      // to use the legacy single-flag path on bundles that don't yet have
+      // a per-model map.
+      const trimmedModel = modelName?.trim();
+      const modelKey: string | null = trimmedModel ? trimmedModel : null;
       if (!index) {
         return {
           applied: 0,
@@ -978,6 +989,7 @@ function App() {
           folder: index.folder_path,
           bundles: pickRefs,
           flag: "pick",
+          modelName: modelKey,
         });
       }
       if (okRefs.length > 0) {
@@ -985,6 +997,7 @@ function App() {
           folder: index.folder_path,
           bundles: okRefs,
           flag: "ok",
+          modelName: modelKey,
         });
       }
       if (rejectRefs.length > 0) {
@@ -992,6 +1005,7 @@ function App() {
           folder: index.folder_path,
           bundles: rejectRefs,
           flag: "reject",
+          modelName: modelKey,
         });
       }
       if (clearRefs.length > 0) {
@@ -999,6 +1013,7 @@ function App() {
           folder: index.folder_path,
           bundles: clearRefs,
           flag: null,
+          modelName: modelKey,
         });
       }
 
@@ -1011,13 +1026,11 @@ function App() {
         return {
           ...prev,
           bundles: prev.bundles.map((b) => {
-            if (pickIds.has(b.bundle_id)) return { ...b, flag: "pick" };
-            if (okIds.has(b.bundle_id)) return { ...b, flag: "ok" };
-            if (rejectIds.has(b.bundle_id)) return { ...b, flag: "reject" };
-            if (clearIds.has(b.bundle_id)) {
-              const { flag: _flag, ...rest } = b;
-              return rest as typeof b;
-            }
+            if (pickIds.has(b.bundle_id)) return patchBundleFlag(b, "pick", modelKey);
+            if (okIds.has(b.bundle_id)) return patchBundleFlag(b, "ok", modelKey);
+            if (rejectIds.has(b.bundle_id))
+              return patchBundleFlag(b, "reject", modelKey);
+            if (clearIds.has(b.bundle_id)) return patchBundleFlag(b, null, modelKey);
             return b;
           }),
         };
@@ -1059,7 +1072,7 @@ function App() {
           "fetch_gallery_feedback",
           { gid: g.gid },
         );
-        const result = await applyGalleryFeedback(g.gid, entries);
+        const result = await applyGalleryFeedback(g.gid, entries, g.model_name);
         totalApplied += result.applied;
         totalCleared += result.cleared;
       }

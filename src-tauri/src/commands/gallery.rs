@@ -37,6 +37,11 @@ pub struct ShareGalleryArgs {
     pub name: String,
     pub expires_in_days: u32,
     pub default_decision: Decision,
+    /// Optional model name. When set, per-photo decisions returned by
+    /// this gallery are bucketed under this name in each bundle's
+    /// `feedback_by_model` map (instead of overwriting the legacy flag).
+    #[serde(default)]
+    pub model_name: Option<String>,
     pub photos: Vec<ShareGalleryPhoto>,
 }
 
@@ -203,6 +208,11 @@ pub async fn share_gallery(
     client.finalize(&gid).await?;
 
     let url = format!("{}/{}", base_url, gid);
+    let model_name = args
+        .model_name
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let record = GalleryRecord {
         gid: gid.clone(),
         name: args.name,
@@ -211,6 +221,7 @@ pub async fn share_gallery(
         expires_at: expires_at.to_rfc3339(),
         default_decision: args.default_decision,
         source_folder: Some(args.folder.clone()),
+        model_name,
         photos: photo_records,
         last_decisions: Default::default(),
         last_fetched_at: None,

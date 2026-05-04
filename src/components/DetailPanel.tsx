@@ -1,8 +1,47 @@
 import type { BundleSummary } from "../types/bundle";
-import type { BundleSidecar, PostRecord } from "../types/sidecar";
+import type { BundleSidecar, Flag, PostRecord } from "../types/sidecar";
 import { formatSize } from "../utils/format";
 import { PostsSection } from "./PostsSection";
 import { TagsSection } from "./TagsSection";
+
+const FLAG_LABEL: Record<Flag, string> = {
+  pick: "★ FAV",
+  ok: "✓ OK",
+  reject: "✕ NG",
+};
+
+function ModelFeedbackBreakdown({
+  feedback,
+}: {
+  feedback: Record<string, Flag> | undefined;
+}) {
+  if (!feedback) return null;
+  const entries = Object.entries(feedback);
+  // Single anonymous-bucket entry adds no information beyond the aggregate
+  // flag readout above — hide it to avoid the empty-name noise.
+  if (entries.length === 0) return null;
+  if (entries.length === 1 && entries[0]![0] === "") return null;
+  return (
+    <div className="model-feedback">
+      <div className="model-feedback-label">モデル別評価</div>
+      <ul className="model-feedback-list">
+        {entries
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([modelName, flag]) => (
+            <li
+              key={modelName || "(anonymous)"}
+              className={`model-feedback-row flag-${flag}`}
+            >
+              <span className="model-feedback-name">
+                {modelName || "（モデル名なし）"}
+              </span>
+              <span className="model-feedback-flag">{FLAG_LABEL[flag]}</span>
+            </li>
+          ))}
+      </ul>
+    </div>
+  );
+}
 
 type OpScope = "all" | "developed";
 
@@ -195,7 +234,7 @@ export function DetailPanel({
             className={`flag-readout flag-${bundle.flag}`}
             role="status"
             aria-label="Flag (gallery feedback)"
-            title="Flags come from gallery feedback — FAV → ★, OK → ✓, NG → ✕"
+            title="Aggregate verdict — any FAV → ★, any NG → ✕, otherwise OK"
           >
             {bundle.flag === "pick"
               ? "★ FAV"
@@ -205,6 +244,8 @@ export function DetailPanel({
           </div>
         )}
       </div>
+
+      <ModelFeedbackBreakdown feedback={bundle.feedback_by_model} />
 
       <ul className="detail-files">
         {bundle.files.map((f) => {

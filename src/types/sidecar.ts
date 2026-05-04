@@ -18,6 +18,10 @@ export interface BundleSidecar {
   base_name: string;
   rating?: number;
   flag?: Flag;
+  /** Per-model gallery verdicts. Key is the gallery's `model_name`
+   *  (empty string for galleries shared without one). Aggregate `flag`
+   *  above is derived from this when present. */
+  feedback_by_model?: Record<string, Flag>;
   tags: string[];
   posts: PostRecord[];
   created_at: string;
