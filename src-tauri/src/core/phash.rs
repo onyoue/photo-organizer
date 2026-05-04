@@ -9,7 +9,7 @@
 //!   ask the user to confirm matches
 //! - 64-bit hash → cheap Hamming-distance comparison, store as u64
 
-use image::{imageops::FilterType, DynamicImage, GenericImageView};
+use image::{imageops::FilterType, DynamicImage};
 
 /// Compute a 64-bit difference hash from a `DynamicImage`.
 ///

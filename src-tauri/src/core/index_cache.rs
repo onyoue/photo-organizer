@@ -5,7 +5,7 @@ use crate::core::APP_DIR;
 use crate::error::AppResult;
 use crate::models::bundle::FolderIndex;
 
-const INDEX_FILE: &str = "index.json";
+pub const INDEX_FILE: &str = "index.json";
 // v4: PNG / TIFF / TIF now classify as Jpeg or Developed (matching JPG)
 // rather than Unknown. v3 caches encode the old roles — discard so the
 // new bucket assignments take effect.

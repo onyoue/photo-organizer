@@ -103,13 +103,6 @@ fn generate_thumbnail(input: &Path, output: &Path) -> AppResult<()> {
     Ok(())
 }
 
-/// True when `path` ends in a known camera-RAW extension. Exposed so the
-/// scanner / phash module can use the same classification as the thumbnail
-/// pipeline.
-pub fn is_raw_path(path: &Path) -> bool {
-    is_raw_extension(path)
-}
-
 /// Public helper used by the phash module: load `path` as a `DynamicImage`,
 /// going through the RAW preview path for camera-RAW extensions. Same logic
 /// as the thumbnail pipeline so the cached webp and the computed phash
