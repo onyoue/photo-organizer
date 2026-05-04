@@ -1,0 +1,92 @@
+name: Release
+
+# Cuts a draft GitHub Release with platform installers built fresh from
+# the tag. Manual dispatch is also supported for ad-hoc preview builds —
+# in that case the run uploads to a draft tagged "manual-<run-id>".
+#
+# How to use:
+#   1. Bump the version in `package.json`, `src-tauri/Cargo.toml`, and
+#      `src-tauri/tauri.conf.json` (all three should match).
+#   2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`
+#   3. Wait for the workflow to finish (~15 min for all 3 platforms).
+#   4. Open the draft release on GitHub, edit the changelog, publish.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Tauri 2 on Linux needs the webkit2gtk-4.1 + gtk + appindicator + rsvg
+      # libraries. Other platforms ship the equivalents in their toolchains.
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build and upload installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Cullback ${{ github.ref_name }}"
+          releaseBody: |
+            ## Installation
+
+            ### Windows
+            Download the `.msi` and run it. Untrusted publisher warning will
+            appear (we don't have code signing yet) — click "More info" → "Run
+            anyway".
+
+            ### macOS
+            Download the `.dmg`, open it, drag Cullback to Applications.
+            On first launch, right-click → Open to bypass Gatekeeper.
+
+            ### Linux
+            Download the `.AppImage` (universal) or `.deb` (Debian/Ubuntu).
+
+            ## Gallery sharing setup
+            Optional. Requires a Cloudflare account. See
+            [gallery-worker/SETUP.md](https://github.com/${{ github.repository }}/blob/main/gallery-worker/SETUP.md).
+          releaseDraft: true
+          prerelease: false
