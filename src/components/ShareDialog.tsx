@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { BundleSummary } from "../types/bundle";
+import type { BundleFile, BundleSummary } from "../types/bundle";
 import type {
   Decision,
   GalleryStats,
@@ -11,6 +11,13 @@ import type {
 } from "../types/gallery";
 import { formatSize } from "../utils/format";
 import { previewVariants } from "../utils/preview";
+
+/** What set of variants per bundle to upload. Default is `developed`
+ *  because the typical model-delivery flow wants only post-processed
+ *  JPGs, not the camera's simultaneously-recorded SOOC JPG. */
+type ShareScope = "developed" | "all";
+
+const RENDERABLE_IMAGE = /\.(jpe?g|png)$/i;
 
 interface Props {
   folder: string;
@@ -40,7 +47,19 @@ function basename(p: string): string {
   return parts[parts.length - 1] ?? p;
 }
 
-function resolveShareablePhotos(bundles: BundleSummary[]): {
+function variantsForScope(b: BundleSummary, scope: ShareScope): BundleFile[] {
+  if (scope === "developed") {
+    return b.files.filter(
+      (f) => f.role === "developed" && RENDERABLE_IMAGE.test(f.path),
+    );
+  }
+  return previewVariants(b);
+}
+
+function resolveShareablePhotos(
+  bundles: BundleSummary[],
+  scope: ShareScope,
+): {
   photos: ShareablePhoto[];
   excluded: BundleSummary[];
   plannedBytes: number;
@@ -49,15 +68,16 @@ function resolveShareablePhotos(bundles: BundleSummary[]): {
   const excluded: BundleSummary[] = [];
   let plannedBytes = 0;
   for (const b of bundles) {
-    const variants = previewVariants(b);
+    const variants = variantsForScope(b, scope);
     if (variants.length === 0) {
       excluded.push(b);
       continue;
     }
-    // Send every renderable JPG/PNG variant — model can compare colour
-    // grades and per-variant feedback comes back so the apply step can
-    // pick the right action (any FAV → pick, all-NG → reject, mixed
-    // → no change). previewVariants is already ordered newest-first.
+    // In "all" mode we send every renderable JPG/PNG variant so the model
+    // can compare colour grades; per-variant feedback comes back so apply
+    // can pick the right action (any FAV → pick, all-NG → reject, mixed
+    // → no change). In "developed" mode only the post-processed JPGs go
+    // — typical for model-delivery use.
     for (const v of variants) {
       photos.push({
         bundle_id: b.bundle_id,
@@ -79,8 +99,10 @@ export function ShareDialog({
 }: Props) {
   const [name, setName] = useState(defaultName);
   const [modelName, setModelName] = useState("");
+  const [scope, setScope] = useState<ShareScope>("developed");
   const [days, setDays] = useState<number>(7);
   const [decision, setDecision] = useState<Decision>(defaultDecision);
+  const [cancelling, setCancelling] = useState(false);
   const [progress, setProgress] = useState<ShareProgressEvent | null>(null);
   const [result, setResult] = useState<ShareGalleryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,8 +111,8 @@ export function ShareDialog({
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
   const { photos, excluded, plannedBytes } = useMemo(
-    () => resolveShareablePhotos(selectedBundles),
-    [selectedBundles],
+    () => resolveShareablePhotos(selectedBundles, scope),
+    [selectedBundles, scope],
   );
 
   const [stats, setStats] = useState<GalleryStats | null>(null);
@@ -140,6 +162,7 @@ export function ShareDialog({
     }
     setError(null);
     setBusy(true);
+    setCancelling(false);
     setProgress(null);
     setResult(null);
     setCopied(false);
@@ -166,13 +189,32 @@ export function ShareDialog({
       const out = await invoke<ShareGalleryResult>("share_gallery", { args });
       setResult(out);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      // The cancel path returns "share cancelled" from the Rust side —
+      // surface it as a status, not a hard error, since the user asked
+      // for it.
+      setError(msg.includes("share cancelled") ? "アップロードを中止しました" : msg);
     } finally {
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
       }
       setBusy(false);
+      setCancelling(false);
+    }
+  }
+
+  async function cancel() {
+    if (!busy || cancelling) return;
+    setCancelling(true);
+    try {
+      // Worker-side cleanup happens inside the Rust side after the next
+      // photo's cancel-check fires. The error from `start`'s invoke will
+      // surface "share cancelled" — we suppress that into a friendlier
+      // message here so the user sees status, not a stack trace.
+      await invoke("cancel_share_gallery");
+    } catch {
+      // The cancel command itself shouldn't fail; ignore any transport blip.
     }
   }
 
@@ -254,6 +296,35 @@ export function ShareDialog({
                   placeholder="例: alice / 山田 / 二人組"
                   className="share-name-input"
                 />
+              </div>
+
+              <div className="settings-field">
+                <label>アップロード対象</label>
+                <p className="settings-hint">
+                  「現像済みのみ」は post-processed の JPG/PNG だけ。「全バリエーション」は撮影時の同時記録 JPG も含めてアップロードします。
+                </p>
+                <div className="share-expiry">
+                  <label className="share-radio">
+                    <input
+                      type="radio"
+                      name="share-scope"
+                      checked={scope === "developed"}
+                      onChange={() => setScope("developed")}
+                      disabled={busy}
+                    />
+                    現像済みのみ
+                  </label>
+                  <label className="share-radio">
+                    <input
+                      type="radio"
+                      name="share-scope"
+                      checked={scope === "all"}
+                      onChange={() => setScope("all")}
+                      disabled={busy}
+                    />
+                    全バリエーション
+                  </label>
+                </div>
               </div>
 
               <div className="settings-field">
@@ -346,9 +417,20 @@ export function ShareDialog({
         <div className="settings-actions">
           {!result ? (
             <>
-              <button type="button" onClick={onClose} disabled={busy}>
-                キャンセル
-              </button>
+              {busy ? (
+                <button
+                  type="button"
+                  onClick={cancel}
+                  disabled={cancelling}
+                  title="現在の写真のアップロード後に停止し、partial ギャラリーを Worker から削除"
+                >
+                  {cancelling ? "中止中…" : "中止"}
+                </button>
+              ) : (
+                <button type="button" onClick={onClose}>
+                  キャンセル
+                </button>
+              )}
               <button
                 type="button"
                 className="primary"

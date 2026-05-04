@@ -1,8 +1,9 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 use ulid::Ulid;
 
 use crate::core::gallery_client::{
@@ -12,6 +13,16 @@ use crate::core::{app_settings, gallery_store};
 use crate::error::{AppError, AppResult};
 use crate::models::gallery::{GalleryPhotoRecord, GalleryRecord};
 use crate::models::settings::Decision;
+
+/// Cancellation flag for an in-flight share. The frontend's "中止" button
+/// flips this true via `cancel_share_gallery`; the upload loop checks it
+/// before each photo and bails out if set, after deleting the partial
+/// gallery on the Worker so no orphans remain.
+///
+/// Single-share-at-a-time assumption — the dialog disables the button
+/// while busy, so concurrent shares aren't possible from the UI.
+#[derive(Default)]
+pub struct ShareCancelFlag(pub AtomicBool);
 
 const MAX_PHOTOS: usize = 500;
 const MAX_DAYS: u32 = 365;
@@ -79,8 +90,12 @@ struct ShareProgressEvent {
 #[tauri::command]
 pub async fn share_gallery(
     app: AppHandle,
+    cancel: State<'_, ShareCancelFlag>,
     args: ShareGalleryArgs,
 ) -> AppResult<ShareGalleryResult> {
+    // Reset the flag at start — a previous cancelled run could have left
+    // it true, and we want this fresh share to be cancellable from zero.
+    cancel.0.store(false, Ordering::Relaxed);
     if args.photos.is_empty() {
         return Err(AppError::InvalidArgument("no photos to share".into()));
     }
@@ -169,6 +184,15 @@ pub async fn share_gallery(
 
     let total = photo_records.len();
     for (i, photo) in photo_records.iter().enumerate() {
+        // Cancellation check — runs before each photo's read+upload so
+        // the user gets a quick stop after pressing 中止. On cancel we
+        // delete the partial gallery on the Worker (best-effort) and
+        // return an error so the frontend can clear its busy state.
+        if cancel.0.load(Ordering::Relaxed) {
+            let _ = client.delete_gallery(&gid).await;
+            return Err(AppError::InvalidArgument("share cancelled".into()));
+        }
+
         // Read each photo on the blocking pool — file size can be a few
         // MB and we don't want to stall the async runtime.
         // photo.source_path is already resolved to an absolute path above.
@@ -235,6 +259,14 @@ pub async fn share_gallery(
     }
 
     Ok(ShareGalleryResult { gid, url })
+}
+
+/// Signal an in-flight `share_gallery` call to stop after its current
+/// photo. Idempotent — flipping a true flag to true is a no-op, and the
+/// next `share_gallery` call resets the flag at start.
+#[tauri::command]
+pub fn cancel_share_gallery(cancel: State<'_, ShareCancelFlag>) {
+    cancel.0.store(true, Ordering::Relaxed);
 }
 
 #[tauri::command]
