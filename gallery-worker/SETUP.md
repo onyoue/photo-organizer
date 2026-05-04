@@ -1,6 +1,11 @@
-# Gallery Worker — Cloudflare setup
+# Cullback gallery Worker — Cloudflare setup
 
 One-time setup before `wrangler deploy` works. All steps are free-tier.
+
+> The R2 bucket and KV namespace below are created with the `cullback`
+> name, matching the app's brand. An earlier iteration of this project
+> used `photo-gallery` as the Worker / bucket name; if you're working
+> with that pre-existing setup, see the comment in `wrangler.toml`.
 
 ## 1. Cloudflare account
 
@@ -19,10 +24,11 @@ npx wrangler login    # opens a browser for OAuth
 ## 3. Create R2 bucket
 
 ```sh
-npx wrangler r2 bucket create photo-gallery
+npx wrangler r2 bucket create cullback
 ```
 
-If a different bucket name is preferred, update `bucket_name` in `wrangler.toml` to match.
+Then update `bucket_name` in `wrangler.toml` to `cullback` (the file ships
+with `photo-gallery` for legacy reasons — see the comment there).
 
 ## 4. Create KV namespace
 
@@ -32,7 +38,7 @@ npx wrangler kv namespace create GALLERY_KV
 
 The command prints something like:
 ```
-🌀 Creating namespace with title "photo-gallery-GALLERY_KV"
+🌀 Creating namespace with title "cullback-GALLERY_KV"
 ✨ Success!
 Add the following to your configuration file in your kv_namespaces array:
 { binding = "GALLERY_KV", id = "abc123def456..." }
@@ -57,7 +63,7 @@ npx wrangler secret put ADMIN_TOKEN
 npx wrangler deploy
 ```
 
-Worker is now live at `https://photo-gallery.<your-subdomain>.workers.dev`.
+Worker is now live at `https://cullback.<your-subdomain>.workers.dev`.
 
 ## 7. Local development (optional)
 
@@ -74,4 +80,4 @@ npx wrangler dev
 
 Once running on `*.workers.dev`, a custom hostname can be added without
 breaking existing share links — the Worker serves both. In Cloudflare dash:
-Workers & Pages → photo-gallery → Settings → Triggers → Add custom domain.
+Workers & Pages → cullback → Settings → Triggers → Add custom domain.

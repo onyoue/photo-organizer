@@ -1,8 +1,10 @@
-name = "photo-gallery"
+name = "cullback"
 main = "src/index.ts"
 compatibility_date = "2026-04-01"
 
-# R2 bucket — create with: wrangler r2 bucket create photo-gallery
+# R2 bucket — created originally as `photo-gallery`. Bucket names are
+# account-internal (never appear in public URLs), so renaming would
+# require copying every existing photo across to a new bucket. Left as-is.
 [[r2_buckets]]
 binding = "GALLERY_BUCKET"
 bucket_name = "photo-gallery"

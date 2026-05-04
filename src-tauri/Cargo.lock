@@ -664,6 +664,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "cullback"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "image",
+ "kamadak-exif",
+ "rayon",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "thiserror 1.0.69",
+ "tokio",
+ "trash",
+ "ulid",
+ "webp",
+]
+
+[[package]]
 name = "darling"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2758,28 +2780,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
 dependencies = [
  "siphasher 1.0.2",
-]
-
-[[package]]
-name = "photo-organizer"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "image",
- "kamadak-exif",
- "rayon",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "thiserror 1.0.69",
- "tokio",
- "trash",
- "ulid",
- "webp",
 ]
 
 [[package]]

@@ -1,8 +1,8 @@
 /**
- * photo-gallery Worker
+ * Cullback gallery Worker
  *
  * Hosts time-limited photo galleries for client/model review.
- * Sister project to the desktop photo-organizer; the desktop app uploads
+ * Sister project to the Cullback desktop app; the desktop app uploads
  * developed JPGs here, models view/feedback on their phone, and the
  * desktop app pulls feedback back into bundle flags.
  *
@@ -37,7 +37,7 @@ export default {
     const path = url.pathname;
 
     if (path === "/" || path === "") {
-      return text("photo-gallery", 200);
+      return text("cullback", 200);
     }
 
     const segs = path.split("/").filter(Boolean);

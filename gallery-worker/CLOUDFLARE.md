@@ -28,7 +28,7 @@ Cloudflare を選んだ決め手:
 
 ```
                  ┌────────────────────────────────────┐
-                 │  Cloudflare Worker (photo-gallery) │
+                 │  Cloudflare Worker (cullback)      │
                  │   ─ ルーティング・認証・ZIP生成等  │
                  └────────────┬───────────────────────┘
                               │
@@ -48,7 +48,8 @@ Cloudflare を選んだ決め手:
 ZIPストリーミングを行う「アプリ本体」。
 
 - ソースは [src/](./src/) 以下の TypeScript
-- デプロイ後は `https://photo-gallery.<your-subdomain>.workers.dev` で公開
+- デプロイ後は `https://cullback.<your-subdomain>.workers.dev` で公開
+  （このプロジェクトの場合は `https://cullback.qohchan.workers.dev`）
 - 全リクエストが Cloudflare のエッジ（世界各地のサーバー）で実行されるので
   自前でサーバーを立てる必要がない
 - 設定ファイルは [wrangler.toml](./wrangler.toml)
@@ -69,7 +70,8 @@ ZIPストリーミングを行う「アプリ本体」。
 S3 互換のオブジェクトストレージ。
 
 - バケット名: `photo-gallery`（[wrangler.toml](./wrangler.toml) の
-  `bucket_name`）
+  `bucket_name`）— Cullbackリブランド前の旧名のまま。バケット名は
+  公開URLには現れず、改名にはR2オブジェクト全コピーが必要なので保留
 - Worker 内では `env.GALLERY_BUCKET` という名前でアクセス
 - **キーの命名規則:** `<gid>/p/<pid>`
   例: `01HVZ.../p/p001`
@@ -201,7 +203,7 @@ npx wrangler secret put ADMIN_TOKEN
 ### デスクトップアプリ側の設定
 
 設定 → Gallery で:
-- **Worker URL**: `https://photo-gallery.<your-subdomain>.workers.dev`
+- **Worker URL**: `https://cullback.<your-subdomain>.workers.dev`
 - **Admin Token**: `wrangler secret put` で設定したのと同じ値
 - **Default Decision**: OK / NG（モデルがタップしなかった写真の扱い）
 
@@ -256,9 +258,11 @@ npx wrangler r2 object delete photo-gallery <gid>/p/<pid>
 ### 無料枠の消費を Cloudflare 側で確認する
 
 ダッシュボード（https://dash.cloudflare.com/）で:
-- **Workers & Pages → photo-gallery → Metrics**: リクエスト数・CPU時間
+- **Workers & Pages → cullback → Metrics**: リクエスト数・CPU時間
 - **R2 → photo-gallery → Metrics**: ストレージ・Class A/B操作数
+  （バケットは旧名のまま）
 - **Workers & Pages → KV → photo-gallery-GALLERY_KV → Metrics**: 読み書き数
+  （ネームスペース名も旧名のまま）
 
 アプリ内のバナーが「Worker が記録した値」なのに対し、こちらは
 「Cloudflare が計上した実値」。乖離していたらアプリの集計バグの可能性。
@@ -270,7 +274,7 @@ npx wrangler r2 object delete photo-gallery <gid>/p/<pid>
 `*.workers.dev` のままでも問題ありませんが、後から独自ドメインに
 切り替えたい場合:
 
-1. Cloudflare ダッシュボード → Workers & Pages → photo-gallery
+1. Cloudflare ダッシュボード → Workers & Pages → cullback
 2. Settings → Triggers → Add Custom Domain
 3. ドメインを入れて保存
 
