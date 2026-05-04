@@ -20,6 +20,9 @@ use crate::error::{AppError, AppResult};
 /// unavailable. Anything not in this list goes through `image::open`.
 const RAW_EXTENSIONS: &[&str] = &[
     "arw", "cr2", "cr3", "nef", "nrw", "dng", "raf", "orf",
+    // ORI is OM Digital's handheld high-res ORF variant. Same internal
+    // structure, same fallback path.
+    "ori",
     "rw2", "pef", "srw", "raw", "3fr", "fff",
 ];
 
@@ -126,30 +129,73 @@ fn load_source_image(path: &Path) -> AppResult<DynamicImage> {
     }
 }
 
-/// Pull the camera-embedded preview / thumbnail JPEG out of a RAW file via
-/// rawler. Avoids full RAW demosaicing — we only need a few hundred px for
-/// the cached webp thumbnail, and the camera's preview is already that size.
+/// Pull the camera-embedded preview / thumbnail JPEG out of a RAW file.
+///
+/// Strategy, in order:
+///   1. `rawler::Decoder::preview_image` — the format-aware path; gives the
+///      full-resolution embedded JPEG when the decoder implements it.
+///   2. `rawler::Decoder::thumbnail_image` — smaller embedded thumbnail.
+///   3. Manual SOI scan — for decoders that don't override either of the
+///      above (e.g. ORF / RAF), walk the file looking for `FF D8 FF` JPEG
+///      start markers and pick the one that decodes to the largest image.
+///      Slower than rawler's path but format-agnostic, so we get something
+///      usable for any RAW that ships an embedded JPEG (which is essentially
+///      all of them — the camera needs it for its own back-of-screen preview).
 fn load_raw_preview(path: &Path) -> AppResult<DynamicImage> {
     let source = RawSource::new(path)
         .map_err(|e| AppError::Image(format!("RAW open {}: {e}", path.display())))?;
     let decoder = rawler::get_decoder(&source)
         .map_err(|e| AppError::Image(format!("RAW decoder: {e}")))?;
     let params = RawDecodeParams::default();
-    // Prefer preview (typically full-resolution embedded JPEG); fall back to
-    // the smaller thumbnail when preview is missing. Decoders that don't
-    // implement either log a warning and return Ok(None) — treat that as
-    // "no embedded preview" so the tile shows the error state rather than
-    // panicking.
     if let Ok(Some(img)) = decoder.preview_image(&source, &params) {
         return Ok(img);
     }
     if let Ok(Some(img)) = decoder.thumbnail_image(&source, &params) {
         return Ok(img);
     }
+    // Decoder didn't implement either preview path; fall back to the
+    // manual JPEG-SOI sweep over the rawsource bytes.
+    if let Some(img) = extract_largest_embedded_jpeg(source.buf()) {
+        return Ok(img);
+    }
     Err(AppError::Image(format!(
         "no embedded preview in RAW: {}",
         path.display()
     )))
+}
+
+/// Walk `bytes` looking for JPEG Start-of-Image markers (`FF D8 FF`) and
+/// decode each candidate, returning the one with the largest pixel area.
+/// Bounded to the first 16 MiB of the file so we don't scan into the
+/// RAW pixel array on big files (typical embedded previews live in the
+/// first 1–4 MiB).
+fn extract_largest_embedded_jpeg(bytes: &[u8]) -> Option<DynamicImage> {
+    const SCAN_LIMIT: usize = 16 * 1024 * 1024;
+    let limit = bytes.len().min(SCAN_LIMIT);
+    let mut best: Option<DynamicImage> = None;
+    let mut best_area: u64 = 0;
+    let mut i: usize = 0;
+    while i + 3 < limit {
+        if bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF {
+            // image::load_from_memory stops at the first complete JPEG and
+            // is tolerant of trailing data — perfect for our case where
+            // bytes[i..] continues into TIFF metadata or other JPEGs.
+            if let Ok(img) = image::load_from_memory(&bytes[i..]) {
+                let area = u64::from(img.width()) * u64::from(img.height());
+                if area > best_area {
+                    best_area = area;
+                    best = Some(img);
+                }
+            }
+            // Advance past the SOI bytes regardless of decode success — the
+            // 2-byte hop skips this marker without missing potentially
+            // overlapping SOIs in pathological files.
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    best
 }
 
 fn read_exif_orientation(path: &Path) -> Option<u32> {
