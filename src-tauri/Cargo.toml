@@ -24,6 +24,11 @@ thiserror = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff"] }
 webp = "0.3"
 kamadak-exif = "0.6"
+# Embedded preview extraction from camera RAW files (ARW/CR2/CR3/NEF/DNG/RAF/ORF
+# and many more). We use it only for `Decoder::thumbnail_image` / `preview_image`
+# — fast path that yields the camera-embedded JPEG preview as a DynamicImage,
+# avoiding full RAW demosaicing for thumbnails.
+rawler = { version = "0.7", default-features = false }
 trash = "5"
 rayon = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }

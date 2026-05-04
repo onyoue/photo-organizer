@@ -152,4 +152,19 @@ describe("selectThumbnailSource", () => {
     ]);
     expect(selectThumbnailSource(b)).toBe("a_v2.tiff");
   });
+
+  it("falls back to the RAW file for RAW-only bundles", () => {
+    // The Rust thumbnail pipeline pulls the camera-embedded JPEG out of
+    // the RAW via rawler, so handing it the raw path is correct.
+    const b = bundle([file("raw", "a.arw", "2026-01-01T00:00:00Z")]);
+    expect(selectThumbnailSource(b)).toBe("a.arw");
+  });
+
+  it("still prefers a JPG / developed file when one is present alongside RAW", () => {
+    const b = bundle([
+      file("raw", "a.arw", "2030-01-01T00:00:00Z"),
+      file("jpeg", "a.jpg", "2026-01-01T00:00:00Z"),
+    ]);
+    expect(selectThumbnailSource(b)).toBe("a.jpg");
+  });
 });

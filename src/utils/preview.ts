@@ -46,9 +46,16 @@ export function selectPreviewFile(b: BundleSummary): string | null {
  * Pick the file to feed the thumbnail generator. Wider net than
  * `selectPreviewFile`: TIFFs are decodable on the backend (image crate has
  * the `tiff` feature) and the resulting webp is universally renderable, so
- * a TIFF-only bundle still gets a tile thumbnail.
+ * a TIFF-only bundle still gets a tile thumbnail. RAW-only bundles also
+ * fall through here — the backend uses rawler to extract the camera-embedded
+ * preview JPEG without doing a full RAW decode.
  */
 export function selectThumbnailSource(b: BundleSummary): string | null {
   const { developed, inCamera } = jpgRoleSorted(b);
-  return developed[0]?.path ?? inCamera[0]?.path ?? null;
+  if (developed[0]) return developed[0].path;
+  if (inCamera[0]) return inCamera[0].path;
+  // RAW-only bundle: hand the RAW path to the backend; rawler pulls the
+  // embedded JPEG preview out for us.
+  const raw = b.files.find((f) => f.role === "raw");
+  return raw?.path ?? null;
 }

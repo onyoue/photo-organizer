@@ -8,9 +8,20 @@ use std::time::SystemTime;
 use exif::{In, Reader, Tag};
 use image::imageops::FilterType;
 use image::DynamicImage;
+use rawler::decoders::RawDecodeParams;
+use rawler::rawsource::RawSource;
 
 use crate::core::APP_DIR;
 use crate::error::{AppError, AppResult};
+
+/// Extensions handled via the camera-RAW path. Lower-case, no leading dot.
+/// We try `rawler::Decoder::preview_image` first (typically 1920px+ embedded
+/// JPEG) and fall back to `thumbnail_image` (160-240px) when preview is
+/// unavailable. Anything not in this list goes through `image::open`.
+const RAW_EXTENSIONS: &[&str] = &[
+    "arw", "cr2", "cr3", "nef", "nrw", "dng", "raf", "orf",
+    "rw2", "pef", "srw", "raw", "3fr", "fff",
+];
 
 // Long-edge target for the cached thumbnail. The L tile is 320 CSS px wide;
 // with object-fit: cover on a 3:2 photo that visually crops the long edge to
@@ -76,7 +87,7 @@ pub fn ensure_thumbnail(folder: &Path, source: &Path) -> AppResult<PathBuf> {
 }
 
 fn generate_thumbnail(input: &Path, output: &Path) -> AppResult<()> {
-    let img = image::open(input).map_err(|e| AppError::Image(e.to_string()))?;
+    let img = load_source_image(input)?;
     let orient = read_exif_orientation(input).unwrap_or(1);
     let oriented = apply_orientation(img, orient);
     let resized = oriented.resize(THUMB_LONG_EDGE, THUMB_LONG_EDGE, FilterType::Triangle);
@@ -90,6 +101,47 @@ fn generate_thumbnail(input: &Path, output: &Path) -> AppResult<()> {
     fs::write(&tmp, &*webp_data)?;
     fs::rename(&tmp, output)?;
     Ok(())
+}
+
+fn is_raw_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .map(|s| RAW_EXTENSIONS.iter().any(|raw| raw.eq_ignore_ascii_case(s)))
+        .unwrap_or(false)
+}
+
+fn load_source_image(path: &Path) -> AppResult<DynamicImage> {
+    if is_raw_extension(path) {
+        load_raw_preview(path)
+    } else {
+        image::open(path).map_err(|e| AppError::Image(e.to_string()))
+    }
+}
+
+/// Pull the camera-embedded preview / thumbnail JPEG out of a RAW file via
+/// rawler. Avoids full RAW demosaicing — we only need a few hundred px for
+/// the cached webp thumbnail, and the camera's preview is already that size.
+fn load_raw_preview(path: &Path) -> AppResult<DynamicImage> {
+    let source = RawSource::new(path)
+        .map_err(|e| AppError::Image(format!("RAW open {}: {e}", path.display())))?;
+    let decoder = rawler::get_decoder(&source)
+        .map_err(|e| AppError::Image(format!("RAW decoder: {e}")))?;
+    let params = RawDecodeParams::default();
+    // Prefer preview (typically full-resolution embedded JPEG); fall back to
+    // the smaller thumbnail when preview is missing. Decoders that don't
+    // implement either log a warning and return Ok(None) — treat that as
+    // "no embedded preview" so the tile shows the error state rather than
+    // panicking.
+    if let Ok(Some(img)) = decoder.preview_image(&source, &params) {
+        return Ok(img);
+    }
+    if let Ok(Some(img)) = decoder.thumbnail_image(&source, &params) {
+        return Ok(img);
+    }
+    Err(AppError::Image(format!(
+        "no embedded preview in RAW: {}",
+        path.display()
+    )))
 }
 
 fn read_exif_orientation(path: &Path) -> Option<u32> {
