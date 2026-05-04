@@ -71,6 +71,7 @@ mod tests {
             active_raw_developer_index: 1,
             raw_developer_path: None,
             gallery: Default::default(),
+            welcome_seen: false,
         };
         write(&dir, &s).unwrap();
         let loaded = read(&dir);
@@ -186,6 +187,7 @@ mod tests {
             active_raw_developer_index: 5,
             raw_developer_path: None,
             gallery: Default::default(),
+            welcome_seen: false,
         };
         assert!(s.active_raw_developer().is_none());
     }

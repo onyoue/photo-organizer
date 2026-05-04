@@ -24,6 +24,11 @@ export interface BundleSummary {
    *  flag was set before per-model support landed. */
   feedback_by_model?: Record<string, Flag>;
   tags?: string[];
+  /** 64-bit difference hash, hex-encoded as 16 chars. Computed during scan
+   *  for cross-folder pHash search; the desktop UI never decodes this —
+   *  it just round-trips back to the Rust search command. Absent when
+   *  computation failed (file missing, decode error, etc.). */
+  phash?: string;
 }
 
 export interface BundleRef {

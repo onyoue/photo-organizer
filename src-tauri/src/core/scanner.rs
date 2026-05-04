@@ -7,7 +7,9 @@ use chrono::{DateTime, Utc};
 use ulid::Ulid;
 
 use crate::core::index_cache::{self, INDEX_VERSION};
+use crate::core::phash;
 use crate::core::sidecar as sidecar_io;
+use crate::core::thumbnail;
 use crate::core::APP_DIR;
 use crate::error::{AppError, AppResult};
 use crate::models::bundle::{BundleFile, BundleSummary, FileRole, FolderIndex};
@@ -210,12 +212,24 @@ fn walk_folder(
             });
     }
 
-    // Reuse bundle_ids from prior cache when basename still exists.
+    // Reuse bundle_ids and prior phashes from cache when basename still
+    // exists. phash is keyed by basename and never invalidated automatically
+    // — the heuristic is that within a folder, the canonical image for a
+    // given basename rarely changes once it's been hashed. Re-scanning via
+    // the explicit "Re-scan" button will recompute everything.
     let prior_id_by_name: HashMap<&str, &str> = prior
         .map(|p| {
             p.bundles
                 .iter()
                 .map(|b| (b.base_name.as_str(), b.bundle_id.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let prior_phash_by_name: HashMap<&str, u64> = prior
+        .map(|p| {
+            p.bundles
+                .iter()
+                .filter_map(|b| b.phash.map(|h| (b.base_name.as_str(), h)))
                 .collect()
         })
         .unwrap_or_default();
@@ -243,6 +257,14 @@ fn walk_folder(
                 .map(|s| s.tags.clone())
                 .unwrap_or_default();
 
+            // Cross-folder pHash search: prefer the cached value, otherwise
+            // compute from the bundle's primary visual file. Skipping on
+            // failure is fine — the search just won't surface this bundle.
+            let phash = prior_phash_by_name
+                .get(base_name.as_str())
+                .copied()
+                .or_else(|| compute_bundle_phash(folder, &files));
+
             BundleSummary {
                 bundle_id,
                 base_name,
@@ -254,6 +276,7 @@ fn walk_folder(
                 flag,
                 feedback_by_model,
                 tags,
+                phash,
             }
         })
         .collect();
@@ -267,6 +290,23 @@ fn walk_folder(
         folder_mtime,
         bundles,
     })
+}
+
+/// Pick the visual file most representative of a bundle and dHash it.
+/// Mirrors the frontend's `selectThumbnailSource` precedence: developed
+/// JPG/PNG/TIFF → in-camera JPG → RAW (via rawler embedded preview).
+/// Returns None on any failure — phash absence just means the bundle
+/// won't be searchable cross-folder, not that the scan should fail.
+fn compute_bundle_phash(folder: &Path, files: &[BundleFile]) -> Option<u64> {
+    let primary = files
+        .iter()
+        .find(|f| f.role == FileRole::Developed)
+        .or_else(|| files.iter().find(|f| f.role == FileRole::Jpeg))
+        .or_else(|| files.iter().find(|f| f.role == FileRole::Raw))?;
+    let path = folder.join(&primary.path);
+    // RAW path goes through rawler; image::open handles JPG/PNG/TIFF.
+    let img = thumbnail::load_for_hashing(&path).ok()?;
+    Some(phash::dhash(&img))
 }
 
 fn collect_post_info(sidecar: Option<&BundleSidecar>) -> (bool, Vec<String>, bool) {
