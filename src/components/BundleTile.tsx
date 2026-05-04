@@ -54,12 +54,17 @@ function BundleTileImpl({ bundle, thumb, active, selected, size, onClick }: Prop
         {(bundle.flag || bundle.rating) && (
           <div className="tile-flags">
             {bundle.flag === "pick" && (
-              <span className="tile-flag pick" title="Pick">
+              <span className="tile-flag fav" title="Favorite (gallery FAV)">
+                ★
+              </span>
+            )}
+            {bundle.flag === "ok" && (
+              <span className="tile-flag ok" title="OK (gallery OK)">
                 ✓
               </span>
             )}
             {bundle.flag === "reject" && (
-              <span className="tile-flag reject" title="Reject">
+              <span className="tile-flag reject" title="Rejected (gallery NG)">
                 ✕
               </span>
             )}

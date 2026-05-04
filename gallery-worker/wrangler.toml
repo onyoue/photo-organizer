@@ -1,0 +1,21 @@
+name = "cullback"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+
+# R2 bucket — created originally as `photo-gallery`. Bucket names are
+# account-internal (never appear in public URLs), so renaming would
+# require copying every existing photo across to a new bucket. Left as-is.
+[[r2_buckets]]
+binding = "GALLERY_BUCKET"
+bucket_name = "photo-gallery"
+
+# KV namespace — create with: wrangler kv namespace create GALLERY_KV
+# Then paste the returned id here.
+[[kv_namespaces]]
+binding = "GALLERY_KV"
+id = "12b8ba67ba60403c95ddf44ccf1f4c01"
+
+# Set with: wrangler secret put ADMIN_TOKEN
+# (paired with the same value in the photo app's settings)
+[vars]
+# ADMIN_TOKEN is intentionally NOT a [vars] entry — use `wrangler secret put`.

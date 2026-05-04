@@ -48,8 +48,6 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Enter", description: "Add post" },
       { keys: "0", description: "Clear rating" },
       { keys: "1 – 5", description: "Set rating" },
-      { keys: "P", description: "Toggle pick" },
-      { keys: "X", description: "Toggle reject" },
     ],
   },
 ];

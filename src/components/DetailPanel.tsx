@@ -4,6 +4,45 @@ import { formatSize } from "../utils/format";
 import { PostsSection } from "./PostsSection";
 import { TagsSection } from "./TagsSection";
 
+const FLAG_LABEL: Record<Flag, string> = {
+  pick: "★ FAV",
+  ok: "✓ OK",
+  reject: "✕ NG",
+};
+
+function ModelFeedbackBreakdown({
+  feedback,
+}: {
+  feedback: Record<string, Flag> | undefined;
+}) {
+  if (!feedback) return null;
+  const entries = Object.entries(feedback);
+  // Single anonymous-bucket entry adds no information beyond the aggregate
+  // flag readout above — hide it to avoid the empty-name noise.
+  if (entries.length === 0) return null;
+  if (entries.length === 1 && entries[0]![0] === "") return null;
+  return (
+    <div className="model-feedback">
+      <div className="model-feedback-label">モデル別評価</div>
+      <ul className="model-feedback-list">
+        {entries
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([modelName, flag]) => (
+            <li
+              key={modelName || "(anonymous)"}
+              className={`model-feedback-row flag-${flag}`}
+            >
+              <span className="model-feedback-name">
+                {modelName || "（モデル名なし）"}
+              </span>
+              <span className="model-feedback-flag">{FLAG_LABEL[flag]}</span>
+            </li>
+          ))}
+      </ul>
+    </div>
+  );
+}
+
 type OpScope = "all" | "developed";
 
 interface Props {
@@ -14,6 +53,9 @@ interface Props {
   onMove: (scope?: OpScope) => void;
   onCopy: (scope?: OpScope) => void;
   onOpen: (role: "raw" | "jpeg" | null) => void;
+  onShare: () => void;
+  /** When true the Share button is disabled (gallery not configured). */
+  shareDisabled: boolean;
   busy: boolean;
 
   sidecar: BundleSidecar | null;
@@ -26,7 +68,6 @@ interface Props {
   onOpenUrl: (url: string) => void;
 
   onSetRating: (rating: number | null) => void;
-  onToggleFlag: (target: Flag) => void;
 
   onSetTags: (tags: string[]) => void;
 
@@ -52,6 +93,8 @@ export function DetailPanel({
   onMove,
   onCopy,
   onOpen,
+  onShare,
+  shareDisabled,
   busy,
   sidecar,
   sidecarLoading,
@@ -62,7 +105,6 @@ export function DetailPanel({
   onDeletePost,
   onOpenUrl,
   onSetRating,
-  onToggleFlag,
   onSetTags,
   currentPreviewPath,
   onSelectPreview,
@@ -146,6 +188,18 @@ export function DetailPanel({
         >
           Open RAW{rawSuffix}
         </button>
+        <button
+          type="button"
+          onClick={onShare}
+          disabled={busy || shareDisabled}
+          title={
+            shareDisabled
+              ? "Configure gallery worker in Settings to enable sharing"
+              : "Upload selected developed JPG/PNGs to a shareable gallery"
+          }
+        >
+          Share…{suffix(selectedCount)}
+        </button>
       </div>
 
       <div className="rating-flag-row">
@@ -175,27 +229,23 @@ export function DetailPanel({
             ×
           </button>
         </div>
-        <div className="flag-toggles" role="group" aria-label="Flag">
-          <button
-            type="button"
-            className={`flag-btn pick${bundle.flag === "pick" ? " active" : ""}`}
-            onClick={() => onToggleFlag("pick")}
-            disabled={busy}
-            title="Toggle pick — press P"
+        {bundle.flag && (
+          <div
+            className={`flag-readout flag-${bundle.flag}`}
+            role="status"
+            aria-label="Flag (gallery feedback)"
+            title="Aggregate verdict — any FAV → ★, any NG → ✕, otherwise OK"
           >
-            ✓ Pick
-          </button>
-          <button
-            type="button"
-            className={`flag-btn reject${bundle.flag === "reject" ? " active" : ""}`}
-            onClick={() => onToggleFlag("reject")}
-            disabled={busy}
-            title="Toggle reject — press X"
-          >
-            ✕ Reject
-          </button>
-        </div>
+            {bundle.flag === "pick"
+              ? "★ FAV"
+              : bundle.flag === "ok"
+                ? "✓ OK"
+                : "✕ NG"}
+          </div>
+        )}
       </div>
+
+      <ModelFeedbackBreakdown feedback={bundle.feedback_by_model} />
 
       <ul className="detail-files">
         {bundle.files.map((f) => {

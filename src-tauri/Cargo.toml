@@ -1,12 +1,12 @@
 [package]
-name = "photo-organizer"
+name = "cullback"
 version = "0.1.0"
-description = "Portrait shoot photo organizer"
+description = "Cullback — portrait shoot culling app with model feedback loop"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "photo_organizer_lib"
+name = "cullback_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -26,3 +26,5 @@ webp = "0.3"
 kamadak-exif = "0.6"
 trash = "5"
 rayon = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["fs", "rt", "rt-multi-thread", "macros"] }

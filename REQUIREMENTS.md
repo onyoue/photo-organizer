@@ -1,4 +1,4 @@
-# Photo Organizer — 要件定義・設計書
+# Cullback — 要件定義・設計書
 
 > ポートレート撮影会後の写真整理と、SNS投稿管理に特化した軽量デスクトップアプリ。
 
@@ -499,7 +499,7 @@ const imgY = (containerHeight - imgHeight) / 2 + pixelOffset.dy;
 ## 11. ディレクトリ構成案
 
 ```
-photo-organizer/
+cullback/
 ├── src/                       # React フロントエンド
 │   ├── components/
 │   │   ├── ThumbnailGrid.tsx

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -7,10 +7,17 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BundleRef, BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
-import type { BundleSidecar, Flag, PostRecord } from "./types/sidecar";
+import type { BundleSidecar, PostRecord } from "./types/sidecar";
 import type { AppSettings } from "./types/settings";
+import type {
+  GalleryFeedbackEntry,
+  GalleryRecord,
+} from "./types/gallery";
 import { generatePostId } from "./components/PostsSection";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { ShareDialog } from "./components/ShareDialog";
+import { GalleriesDialog, type ApplyResult } from "./components/GalleriesDialog";
+import { patchBundleFlag } from "./utils/flagPatch";
 import { CheatsheetOverlay } from "./components/CheatsheetOverlay";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
@@ -73,8 +80,48 @@ function App() {
     active_raw_developer_index: 0,
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [showGalleries, setShowGalleries] = useState(false);
   const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  // Auto-dismiss the toast after a few seconds.
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(id);
+  }, [toast]);
+
+  // Backup modifier-key tracker. On at least some WebView2 builds the
+  // shift/ctrl flags on click events are not propagated, which makes
+  // Shift+click and Ctrl+click on tiles indistinguishable from a plain
+  // click. We mirror the modifier state via keydown/keyup so the tile
+  // click handler can OR in this state and still do the right thing.
+  // Also resets on window blur — alt-tabbing while a modifier was down
+  // would otherwise leave it stuck on.
+  const modKeysRef = useRef({ shift: false, ctrl: false, meta: false });
+  useEffect(() => {
+    const sync = (e: KeyboardEvent) => {
+      modKeysRef.current = {
+        shift: e.shiftKey,
+        ctrl: e.ctrlKey,
+        meta: e.metaKey,
+      };
+    };
+    const reset = () => {
+      modKeysRef.current = { shift: false, ctrl: false, meta: false };
+    };
+    window.addEventListener("keydown", sync);
+    window.addEventListener("keyup", sync);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("keydown", sync);
+      window.removeEventListener("keyup", sync);
+      window.removeEventListener("blur", reset);
+    };
+  }, []);
 
   // F1 hold-to-show keyboard cheatsheet overlay. Bound at window level so it
   // works regardless of focus, including while typing in the tag/post inputs.
@@ -468,11 +515,21 @@ function App() {
   const handleTileClick = useCallback(
     (id: string, e: React.MouseEvent) => {
       if (!index) return;
-      const meta = e.ctrlKey || e.metaKey;
-      if (e.shiftKey && anchorId) {
-        setSelectedIds(new Set(rangeIds(index.bundles, anchorId, id)));
+      // Some WebView2 builds drop the modifier-key flags on synthetic
+      // click events, so we OR in the keydown-tracked state.
+      const mk = modKeysRef.current;
+      const isShift = e.shiftKey || mk.shift;
+      const meta = e.ctrlKey || e.metaKey || mk.ctrl || mk.meta;
+      if (isShift) {
+        // Range from anchor to clicked, restricted to what's currently
+        // visible. If there's no anchor yet (e.g., first click of the
+        // session was a Shift+click), seed it from the clicked tile so
+        // the next Shift+click extends a real range instead of being a
+        // no-op.
+        const anchor = anchorId ?? activeId ?? id;
+        setSelectedIds(new Set(rangeIds(filteredBundles, anchor, id)));
         setActiveId(id);
-        // anchorId stays — Shift extends from the same anchor on subsequent clicks.
+        if (!anchorId) setAnchorId(anchor);
       } else if (meta) {
         setSelectedIds((prev) => {
           const next = new Set(prev);
@@ -486,7 +543,7 @@ function App() {
         selectSingle(id);
       }
     },
-    [anchorId, index],
+    [activeId, anchorId, filteredBundles, index],
   );
 
   const navigateBy = useCallback(
@@ -843,49 +900,193 @@ function App() {
     [activeBundle, index],
   );
 
-  const toggleFlagForSelection = useCallback(
-    async (target: Flag) => {
-      if (!index || selectedIds.size === 0 || busy) return;
-      // Toggle decision pivots on the active bundle: if it's already flagged
-      // with `target`, we clear; otherwise we set everyone to `target`.
-      // Mirrors Lightroom's P/X behaviour.
-      const newFlag: Flag | null =
-        activeBundle?.flag === target ? null : target;
-      const refs = selectedBundleRefs();
-      if (refs.length === 0) return;
-      try {
+  const applyGalleryFeedback = useCallback(
+    async (
+      gid: string,
+      entries: GalleryFeedbackEntry[],
+      modelName?: string,
+    ): Promise<ApplyResult> => {
+      void gid;
+      // Per-model bucketing key. Empty string is the legacy / anonymous
+      // bucket inside `feedback_by_model`; null tells the Tauri command
+      // to use the legacy single-flag path on bundles that don't yet have
+      // a per-model map.
+      const trimmedModel = modelName?.trim();
+      const modelKey: string | null = trimmedModel ? trimmedModel : null;
+      if (!index) {
+        return {
+          applied: 0,
+          cleared: 0,
+          notInCurrentFolder: new Set(entries.map((e) => e.bundle_id)).size,
+        };
+      }
+
+      let notInCurrentFolder = 0;
+
+      // Group per bundle — each bundle now has multiple variant entries
+      // and we collapse them into a single flag for the bundle.
+      const byBundle = new Map<string, GalleryFeedbackEntry[]>();
+      for (const e of entries) {
+        const arr = byBundle.get(e.bundle_id) ?? [];
+        arr.push(e);
+        byBundle.set(e.bundle_id, arr);
+      }
+
+      const bundlesById = new Map(
+        index.bundles.map((b) => [b.bundle_id, b]),
+      );
+      const pickRefs: BundleRef[] = [];
+      const okRefs: BundleRef[] = [];
+      const rejectRefs: BundleRef[] = [];
+      const clearRefs: BundleRef[] = [];
+
+      for (const [bundleId, group] of byBundle) {
+        const bundle = bundlesById.get(bundleId);
+        if (!bundle) {
+          notInCurrentFolder++;
+          continue;
+        }
+        const ref: BundleRef = {
+          bundle_id: bundle.bundle_id,
+          base_name: bundle.base_name,
+        };
+
+        // Aggregate variants into a single bundle-level flag, in order
+        // of decisiveness: FAV > NG > OK > (no actionable signal).
+        //   FAV beats everything (model explicitly loved at least one
+        //     variant of this bundle).
+        //   NG over OK because rejection is more decisive than approval.
+        //   OK only when the model touched the photo with a plain OK
+        //     and didn't flag any variant FAV or NG.
+        // No-signal bundles get their flag cleared so re-applying makes
+        // gallery feedback the source of truth.
+        const explicitFav = group.some(
+          (e) => e.explicit && e.decision === "fav",
+        );
+        const explicitNg = group.some(
+          (e) => e.explicit && e.decision === "ng",
+        );
+        const explicitOk = group.some(
+          (e) => e.explicit && e.decision === "ok",
+        );
+
+        if (explicitFav) {
+          pickRefs.push(ref);
+        } else if (explicitNg) {
+          rejectRefs.push(ref);
+        } else if (explicitOk) {
+          okRefs.push(ref);
+        } else if (bundle.flag !== undefined) {
+          // Only emit a clear if the bundle actually has a flag to clear.
+          // Skipping the no-op case keeps the apply count honest and avoids
+          // pointless sidecar churn.
+          clearRefs.push(ref);
+        }
+      }
+
+      if (pickRefs.length > 0) {
         await invoke("set_bundle_flag", {
           folder: index.folder_path,
-          bundles: refs,
-          flag: newFlag,
+          bundles: pickRefs,
+          flag: "pick",
+          modelName: modelKey,
         });
-        const flagValue = newFlag ?? undefined;
-        setIndex((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            bundles: prev.bundles.map((b) =>
-              selectedIds.has(b.bundle_id) ? { ...b, flag: flagValue } : b,
-            ),
-          };
-        });
-        if (activeBundle && selectedIds.has(activeBundle.bundle_id)) {
-          setActiveSidecar((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  flag: flagValue,
-                  updated_at: new Date().toISOString(),
-                }
-              : prev,
-          );
-        }
-      } catch (e: unknown) {
-        setError(toMessage(e));
       }
+      if (okRefs.length > 0) {
+        await invoke("set_bundle_flag", {
+          folder: index.folder_path,
+          bundles: okRefs,
+          flag: "ok",
+          modelName: modelKey,
+        });
+      }
+      if (rejectRefs.length > 0) {
+        await invoke("set_bundle_flag", {
+          folder: index.folder_path,
+          bundles: rejectRefs,
+          flag: "reject",
+          modelName: modelKey,
+        });
+      }
+      if (clearRefs.length > 0) {
+        await invoke("set_bundle_flag", {
+          folder: index.folder_path,
+          bundles: clearRefs,
+          flag: null,
+          modelName: modelKey,
+        });
+      }
+
+      const pickIds = new Set(pickRefs.map((r) => r.bundle_id));
+      const okIds = new Set(okRefs.map((r) => r.bundle_id));
+      const rejectIds = new Set(rejectRefs.map((r) => r.bundle_id));
+      const clearIds = new Set(clearRefs.map((r) => r.bundle_id));
+      setIndex((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          bundles: prev.bundles.map((b) => {
+            if (pickIds.has(b.bundle_id)) return patchBundleFlag(b, "pick", modelKey);
+            if (okIds.has(b.bundle_id)) return patchBundleFlag(b, "ok", modelKey);
+            if (rejectIds.has(b.bundle_id))
+              return patchBundleFlag(b, "reject", modelKey);
+            if (clearIds.has(b.bundle_id)) return patchBundleFlag(b, null, modelKey);
+            return b;
+          }),
+        };
+      });
+
+      return {
+        applied: pickRefs.length + okRefs.length + rejectRefs.length,
+        cleared: clearRefs.length,
+        notInCurrentFolder,
+      };
     },
-    [activeBundle, busy, index, selectedBundleRefs, selectedIds],
+    [index],
   );
+
+  const fetchFeedbackForCurrentFolder = useCallback(async () => {
+    if (!index || feedbackBusy) return;
+    const norm = (p: string) =>
+      p.replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
+    setFeedbackBusy(true);
+    setToast("ギャラリー一覧を取得中…");
+    try {
+      const all = await invoke<GalleryRecord[]>("list_galleries");
+      const target = norm(index.folder_path);
+      const matching = all.filter(
+        (g) => g.source_folder && norm(g.source_folder) === target,
+      );
+      if (matching.length === 0) {
+        setToast("このフォルダ向けのギャラリーはありません");
+        return;
+      }
+      let totalApplied = 0;
+      let totalCleared = 0;
+      for (let i = 0; i < matching.length; i++) {
+        const g = matching[i]!;
+        setToast(
+          `取り込み中 ${i + 1}/${matching.length} · ${g.name}`,
+        );
+        const entries = await invoke<GalleryFeedbackEntry[]>(
+          "fetch_gallery_feedback",
+          { gid: g.gid },
+        );
+        const result = await applyGalleryFeedback(g.gid, entries, g.model_name);
+        totalApplied += result.applied;
+        totalCleared += result.cleared;
+      }
+      const clearedNote =
+        totalCleared > 0 ? ` · ${totalCleared} 件をクリア` : "";
+      setToast(
+        `✓ ${matching.length} 件のギャラリーから ${totalApplied} 件にフラグ反映${clearedNote}`,
+      );
+    } catch (e: unknown) {
+      setToast(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setFeedbackBusy(false);
+    }
+  }, [applyGalleryFeedback, feedbackBusy, index]);
 
   const handleOpenUrl = useCallback(async (url: string) => {
     try {
@@ -1061,16 +1262,9 @@ function App() {
           e.preventDefault();
           void setRatingForSelection(parseInt(e.key, 10));
           break;
-        case "p":
-        case "P":
-          e.preventDefault();
-          void toggleFlagForSelection("pick");
-          break;
-        case "x":
-        case "X":
-          e.preventDefault();
-          void toggleFlagForSelection("reject");
-          break;
+        // Pick/Reject flags are now driven exclusively by gallery feedback
+        // (FAV → pick, NG → reject) — local P/X toggles were removed so a
+        // photographer keystroke can't silently overwrite a model's vote.
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1091,7 +1285,6 @@ function App() {
     cyclePreviewVariant,
     trashCurrentVariant,
     setRatingForSelection,
-    toggleFlagForSelection,
   ]);
 
   const selectedDevelopedCount = useMemo(() => {
@@ -1145,6 +1338,23 @@ function App() {
         <button
           type="button"
           className="topbar-icon"
+          onClick={fetchFeedbackForCurrentFolder}
+          disabled={!index || feedbackBusy}
+          title="現在のフォルダ向けのフィードバックを取り込み"
+        >
+          📥
+        </button>
+        <button
+          type="button"
+          className="topbar-icon"
+          onClick={() => setShowGalleries(true)}
+          title="Shared galleries"
+        >
+          🔗
+        </button>
+        <button
+          type="button"
+          className="topbar-icon"
           onClick={() => setShowSettings(true)}
           title="Settings"
         >
@@ -1162,6 +1372,12 @@ function App() {
       )}
 
       <CheatsheetOverlay visible={showCheatsheet} />
+
+      {toast && (
+        <div className="app-toast" onClick={() => setToast(null)}>
+          {toast}
+        </div>
+      )}
 
       {isDraggingOver && (
         <div className="drop-overlay" aria-hidden="true">
@@ -1268,14 +1484,41 @@ function App() {
               onDeletePost={deletePost}
               onOpenUrl={handleOpenUrl}
               onSetRating={setRatingForSelection}
-              onToggleFlag={toggleFlagForSelection}
               onSetTags={setTagsForActive}
               currentPreviewPath={currentPreviewVariant?.path ?? null}
               onSelectPreview={selectPreviewByPath}
               onTrashVariant={trashVariant}
+              onShare={() => setShowShare(true)}
+              shareDisabled={
+                !appSettings.gallery?.worker_url?.trim() ||
+                !appSettings.gallery?.admin_token?.trim() ||
+                selectedIds.size === 0
+              }
             />
           </aside>
         </div>
+      )}
+
+      {showShare && index && (
+        <ShareDialog
+          folder={index.folder_path}
+          selectedBundles={index.bundles.filter((b) =>
+            selectedIds.has(b.bundle_id),
+          )}
+          defaultName={`${
+            index.folder_path.split(/[\\/]/).filter(Boolean).pop() ?? "gallery"
+          } ${new Date().toISOString().slice(0, 10)}`}
+          defaultDecision={appSettings.gallery?.default_decision ?? "ok"}
+          onClose={() => setShowShare(false)}
+        />
+      )}
+
+      {showGalleries && (
+        <GalleriesDialog
+          currentFolder={index?.folder_path ?? null}
+          onClose={() => setShowGalleries(false)}
+          onApplyFeedback={applyGalleryFeedback}
+        />
       )}
 
       {index && index.bundles.length > 0 && (

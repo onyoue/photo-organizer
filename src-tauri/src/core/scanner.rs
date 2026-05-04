@@ -234,6 +234,10 @@ fn walk_folder(
             let (has_posts, post_platforms, has_model_post) = collect_post_info(sidecar.as_ref());
             let rating = sidecar.as_ref().and_then(|s| s.rating);
             let flag = sidecar.as_ref().and_then(|s| s.flag);
+            let feedback_by_model = sidecar
+                .as_ref()
+                .map(|s| s.feedback_by_model.clone())
+                .unwrap_or_default();
             let tags = sidecar
                 .as_ref()
                 .map(|s| s.tags.clone())
@@ -248,6 +252,7 @@ fn walk_folder(
                 has_model_post,
                 rating,
                 flag,
+                feedback_by_model,
                 tags,
             }
         })
@@ -579,6 +584,7 @@ mod tests {
                 base_name: "DSC_R1".into(),
                 rating: Some(5),
                 flag: Some(Flag::Pick),
+                feedback_by_model: std::collections::HashMap::new(),
                 tags: vec!["model:saki".into(), "shibuya".into()],
                 posts: vec![],
                 created_at: "2026-01-01T00:00:00Z".into(),
@@ -594,6 +600,7 @@ mod tests {
                 base_name: "DSC_R2".into(),
                 rating: None,
                 flag: Some(Flag::Reject),
+                feedback_by_model: std::collections::HashMap::new(),
                 tags: vec![],
                 posts: vec![],
                 created_at: "2026-01-01T00:00:00Z".into(),
@@ -636,6 +643,7 @@ mod tests {
             base_name: "DSC_0001".into(),
             rating: None,
             flag: None,
+            feedback_by_model: std::collections::HashMap::new(),
             tags: vec![],
             posts: vec![
                 PostRecord {
