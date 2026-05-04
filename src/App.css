@@ -626,6 +626,17 @@ html,
   margin-top: 8px;
 }
 
+.share-result-view {
+  margin-top: 8px;
+  align-items: center;
+}
+
+.share-url-label {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+}
+
 .share-stats {
   display: flex;
   flex-direction: column;

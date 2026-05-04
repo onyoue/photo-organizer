@@ -107,7 +107,9 @@ export function ShareDialog({
   const [result, setResult] = useState<ShareGalleryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
+  // Which URL was just copied (share | view), or null. Drives a brief
+  // "コピー済み" affordance per button.
+  const [copied, setCopied] = useState<"share" | "view" | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
   const { photos, excluded, plannedBytes } = useMemo(
@@ -165,7 +167,7 @@ export function ShareDialog({
     setCancelling(false);
     setProgress(null);
     setResult(null);
-    setCopied(false);
+    setCopied(null);
 
     try {
       const unlisten = await listen<ShareProgressEvent>(
@@ -218,15 +220,17 @@ export function ShareDialog({
     }
   }
 
-  async function copyUrl() {
-    if (!result) return;
+  async function copyUrl(which: "share" | "view", url: string, fallbackId: string) {
     try {
-      await navigator.clipboard.writeText(result.url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(url);
+      setCopied(which);
+      setTimeout(
+        () => setCopied((cur) => (cur === which ? null : cur)),
+        2000,
+      );
     } catch {
       // Fallback: select the URL so the user can copy manually.
-      const el = document.getElementById("share-url-text");
+      const el = document.getElementById(fallbackId);
       if (el) {
         const range = document.createRange();
         range.selectNodeContents(el);
@@ -391,7 +395,7 @@ export function ShareDialog({
             <div className="settings-field">
               <label>共有リンク</label>
               <p className="settings-hint">
-                以下の URL をモデルに送ってください。期限後は自動で無効になります。
+                上をモデルに送付。下は自分用の閲覧専用リンク（フィードバック投稿が無効）。
               </p>
               <div className="share-result">
                 <code id="share-url-text" className="share-url">
@@ -399,10 +403,30 @@ export function ShareDialog({
                 </code>
                 <button
                   type="button"
-                  onClick={copyUrl}
+                  onClick={() =>
+                    void copyUrl("share", result.url, "share-url-text")
+                  }
                   className="primary"
                 >
-                  {copied ? "コピー済み" : "コピー"}
+                  {copied === "share" ? "コピー済み" : "コピー"}
+                </button>
+              </div>
+              <div className="share-result share-result-view">
+                <span className="share-url-label">👁 閲覧専用</span>
+                <code id="share-view-url-text" className="share-url">
+                  {`${result.url}/view`}
+                </code>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void copyUrl(
+                      "view",
+                      `${result.url}/view`,
+                      "share-view-url-text",
+                    )
+                  }
+                >
+                  {copied === "view" ? "コピー済み" : "コピー"}
                 </button>
               </div>
               <p className="settings-hint share-result-hint">

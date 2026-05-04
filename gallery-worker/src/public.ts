@@ -49,7 +49,14 @@ export async function handlePublic(
 
   const action = segs[1];
 
-  if (!action && req.method === "GET") return galleryHtml(env, gid, meta);
+  if (!action && req.method === "GET") return galleryHtml(env, gid, meta, false);
+
+  // Read-only variant for the photographer's own preview — same gallery,
+  // same photos, but the rendered HTML hides the OK/NG/FAV buttons so an
+  // accidental tap can't overwrite a model's verdict.
+  if (action === "view" && req.method === "GET") {
+    return galleryHtml(env, gid, meta, true);
+  }
 
   if (action === "manifest" && req.method === "GET") {
     return json(await buildManifest(env, gid, meta), 200, {
@@ -166,9 +173,10 @@ async function galleryHtml(
   env: Env,
   gid: string,
   meta: GalleryMeta,
+  viewOnly: boolean,
 ): Promise<Response> {
   const decisions = await loadDecisions(env, gid);
-  const html = renderGalleryHtml(gid, meta, decisions);
+  const html = renderGalleryHtml(gid, meta, decisions, viewOnly);
   return new Response(html, {
     status: 200,
     headers: {

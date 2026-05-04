@@ -19,6 +19,7 @@ export function renderGalleryHtml(
   gid: string,
   meta: GalleryMeta,
   decisions: Record<string, "ok" | "ng" | "fav">,
+  viewOnly = false,
 ): string {
   const manifest: InlineManifest = {
     name: meta.name,
@@ -29,7 +30,23 @@ export function renderGalleryHtml(
   };
 
   const safeName = escapeHtml(meta.name);
-  const data = escapeForScript(JSON.stringify({ gid, ...manifest }));
+  const data = escapeForScript(JSON.stringify({ gid, viewOnly, ...manifest }));
+
+  // In view-only mode the photographer is previewing their own gallery —
+  // hide the decision buttons so an accidental tap can't overwrite a
+  // model's verdict, and show a clear banner so it's obvious which mode
+  // the page is in.
+  const viewOnlyBanner = viewOnly
+    ? `<div class="view-only-banner">👁 閲覧専用 — タップしてもフィードバックは送信されません</div>`
+    : "";
+  const lbActions = viewOnly
+    ? ""
+    : `
+    <div class="lb-actions">
+      <button class="dec ok" id="decOk">✓ OK</button>
+      <button class="dec ng" id="decNg">× NG</button>
+      <button class="dec fav" id="decFav">★ FAV</button>
+    </div>`;
 
   return `<!doctype html>
 <html lang="ja">
@@ -38,10 +55,11 @@ export function renderGalleryHtml(
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#111">
-<title>${safeName}</title>
+<title>${safeName}${viewOnly ? " (閲覧専用)" : ""}</title>
 <style>${CSS}</style>
 </head>
-<body>
+<body${viewOnly ? ' class="view-only"' : ""}>
+${viewOnlyBanner}
 <header id="hdr">
   <h1>${safeName}</h1>
   <div class="meta">
@@ -65,12 +83,7 @@ export function renderGalleryHtml(
     <img class="lb-img" id="lbImg" alt="">
   </div>
   <div class="lb-bottom">
-    <div class="lb-meta" id="lbMeta"></div>
-    <div class="lb-actions">
-      <button class="dec ok" id="decOk">✓ OK</button>
-      <button class="dec ng" id="decNg">× NG</button>
-      <button class="dec fav" id="decFav">★ FAV</button>
-    </div>
+    <div class="lb-meta" id="lbMeta"></div>${lbActions}
   </div>
   <button class="nav prev" id="lbPrev" aria-label="前へ">‹</button>
   <button class="nav next" id="lbNext" aria-label="次へ">›</button>
@@ -156,6 +169,8 @@ body.selecting .tile .badge{display:none}
 .nav.next{right:8px}
 .nav[disabled]{opacity:.3;pointer-events:none}
 .expired{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;color:#888;text-align:center;padding:20px}
+.view-only-banner{position:sticky;top:0;z-index:11;background:#3a2e10;color:#fcd34d;padding:8px 14px;font-size:12px;font-weight:600;text-align:center;border-bottom:1px solid #5a4818}
+body.view-only header{top:32px}
 `;
 
 const JS = `(function(){
@@ -166,6 +181,7 @@ const decOk=$("decOk"),decNg=$("decNg"),decFav=$("decFav");
 const info=$("info"),hint=$("hint");
 const selBtn=$("selBtn"),selBar=$("selBar"),selCount=$("selCount"),selSave=$("selSave"),selCancel=$("selCancel"),selAll=$("selAll"),toast=$("toast");
 const photos=G.photos,decisions=G.decisions||{},def=G.default_decision;
+const viewOnly=!!G.viewOnly;
 const photoUrl=p=>"/"+G.gid+"/p/"+p.pid;
 const fbUrl="/"+G.gid+"/feedback";
 const selectedPids=new Set();
@@ -305,6 +321,7 @@ function updateLightbox(){
   paintDec(p.pid);
 }
 function paintDec(pid){
+  if(viewOnly)return; // decision buttons aren't rendered
   const d=decisionFor(pid);
   decOk.classList.toggle("active",d==="ok");
   decNg.classList.toggle("active",d==="ng");
@@ -343,9 +360,11 @@ function post(pid,decision){
 lbClose.addEventListener("click",close);
 lbPrev.addEventListener("click",()=>{if(cur>0){cur--;updateLightbox();}});
 lbNext.addEventListener("click",()=>{if(cur<photos.length-1){cur++;updateLightbox();}});
-decOk.addEventListener("click",()=>setDecision(photos[cur].pid,"ok"));
-decNg.addEventListener("click",()=>setDecision(photos[cur].pid,"ng"));
-decFav.addEventListener("click",()=>setDecision(photos[cur].pid,"fav"));
+if(!viewOnly){
+  decOk.addEventListener("click",()=>setDecision(photos[cur].pid,"ok"));
+  decNg.addEventListener("click",()=>setDecision(photos[cur].pid,"ng"));
+  decFav.addEventListener("click",()=>setDecision(photos[cur].pid,"fav"));
+}
 
 // keyboard (desktop convenience)
 document.addEventListener("keydown",e=>{
@@ -353,9 +372,9 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Escape")close();
   else if(e.key==="ArrowLeft"&&cur>0){cur--;updateLightbox();}
   else if(e.key==="ArrowRight"&&cur<photos.length-1){cur++;updateLightbox();}
-  else if(e.key==="o"||e.key==="O")setDecision(photos[cur].pid,"ok");
-  else if(e.key==="x"||e.key==="X")setDecision(photos[cur].pid,"ng");
-  else if(e.key==="f"||e.key==="F")setDecision(photos[cur].pid,"fav");
+  else if(!viewOnly&&(e.key==="o"||e.key==="O"))setDecision(photos[cur].pid,"ok");
+  else if(!viewOnly&&(e.key==="x"||e.key==="X"))setDecision(photos[cur].pid,"ng");
+  else if(!viewOnly&&(e.key==="f"||e.key==="F"))setDecision(photos[cur].pid,"fav");
 });
 
 // swipe

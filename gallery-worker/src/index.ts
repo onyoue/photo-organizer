@@ -19,7 +19,8 @@
  *   POST   /admin/stats/recompute      walk KV/R2 to rebuild the counter
  *
  *   --- public ------------------------------------------------------
- *   GET    /<gid>                      mobile gallery HTML
+ *   GET    /<gid>                      mobile gallery HTML (full)
+ *   GET    /<gid>/view                 mobile gallery HTML (read-only)
  *   GET    /<gid>/manifest             gallery + photo list as JSON
  *   GET    /<gid>/p/<pid>              photo bytes (R2 proxy, expiry-checked)
  *   GET    /<gid>/zip                  ZIP stream of all photos
