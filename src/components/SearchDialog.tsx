@@ -48,6 +48,19 @@ export function SearchDialog({ initialRoot, onClose, onRootSelected }: Props) {
   const [statusByBundle, setStatusByBundle] = useState<Record<string, string>>(
     {},
   );
+  // Hits the user clicked to enlarge. Multiple can be open at once so the
+  // user can directly compare different cuts of the same scene before
+  // picking which one to attach a post record to.
+  const [expandedHits, setExpandedHits] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (bundleId: string) => {
+    setExpandedHits((prev) => {
+      const next = new Set(prev);
+      if (next.has(bundleId)) next.delete(bundleId);
+      else next.add(bundleId);
+      return next;
+    });
+  };
 
   const pickRoot = useCallback(async () => {
     const picked = await openDialog({
@@ -260,12 +273,21 @@ export function SearchDialog({ initialRoot, onClose, onRootSelected }: Props) {
               <ul className="search-hit-list">
                 {results.hits.map((h) => {
                   const renderable =
-                    h.thumbnail_source && RENDERABLE.test(h.thumbnail_source);
+                    !!(h.thumbnail_source && RENDERABLE.test(h.thumbnail_source));
                   const status = statusByBundle[h.bundle_id];
+                  const expanded = expandedHits.has(h.bundle_id);
                   return (
                     <li key={h.bundle_id} className="search-hit">
                       <div className="search-hit-main">
-                        <div className="search-hit-thumb">
+                        <div
+                          className={`search-hit-thumb${
+                            renderable ? " clickable" : ""
+                          }`}
+                          onClick={
+                            renderable ? () => toggleExpanded(h.bundle_id) : undefined
+                          }
+                          title={renderable ? "クリックで拡大" : undefined}
+                        >
                           {renderable && h.thumbnail_source ? (
                             <img
                               src={convertFileSrc(h.thumbnail_source)}
@@ -302,6 +324,16 @@ export function SearchDialog({ initialRoot, onClose, onRootSelected }: Props) {
                           </div>
                         </div>
                         <div className="search-hit-actions">
+                          {renderable && (
+                            <button
+                              type="button"
+                              onClick={() => toggleExpanded(h.bundle_id)}
+                              disabled={!!busy}
+                              title={expanded ? "閉じる" : "拡大して比較する"}
+                            >
+                              {expanded ? "🔽 閉じる" : "🔍 拡大"}
+                            </button>
+                          )}
                           {status ? (
                             <span className="search-hit-status">{status}</span>
                           ) : (
@@ -315,6 +347,16 @@ export function SearchDialog({ initialRoot, onClose, onRootSelected }: Props) {
                           )}
                         </div>
                       </div>
+                      {expanded && renderable && h.thumbnail_source && (
+                        <img
+                          src={convertFileSrc(h.thumbnail_source)}
+                          alt={h.base_name}
+                          className="search-hit-expanded"
+                          loading="lazy"
+                          onClick={() => toggleExpanded(h.bundle_id)}
+                          title="クリックで閉じる"
+                        />
+                      )}
                       {addingFor?.bundle_id === h.bundle_id && (
                         <PostForm
                           onSave={(p) => void addPost(h, p)}
