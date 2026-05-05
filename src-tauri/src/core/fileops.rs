@@ -1,7 +1,8 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::core::index_cache;
 use crate::core::thumbnail;
 use crate::error::{AppError, AppResult};
 
@@ -67,6 +68,12 @@ pub fn trash_files(folder: &Path, files: &[String]) -> AppResult<()> {
     for thumb in orphan_thumbs {
         let _ = fs::remove_file(thumb);
     }
+    // Drop the trashed files from the cached folder index so the next
+    // app launch doesn't render placeholder tiles for files that no
+    // longer exist. NTFS occasionally fails to bump folder mtime on a
+    // shell-level recycle, which would otherwise let the stale cache
+    // survive — same write-through pattern we use after sidecar updates.
+    let _ = patch_cache_remove_files(folder, files);
     Ok(())
 }
 
@@ -107,6 +114,9 @@ pub fn move_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()>
     }
 
     migrate_thumbs(&thumbs_to_migrate, dest, MigrateMode::Move);
+    // Source folder no longer holds these files — same cache-update
+    // rationale as trash_files.
+    let _ = patch_cache_remove_files(folder, files);
     Ok(())
 }
 
@@ -129,6 +139,35 @@ pub fn copy_files(folder: &Path, files: &[String], dest: &Path) -> AppResult<()>
     }
 
     migrate_thumbs(&thumbs_to_migrate, dest, MigrateMode::Copy);
+    Ok(())
+}
+
+/// Drop the given files from the cached folder index, removing any bundles
+/// they leave empty. Used after destructive ops (trash / move-out) so that
+/// a next-launch cache read doesn't surface placeholder tiles for files
+/// that aren't on disk anymore. Best-effort — a missing or unreadable cache
+/// is fine, the next scan rebuilds it.
+fn patch_cache_remove_files(folder: &Path, removed: &[String]) -> AppResult<()> {
+    let Some(mut cached) = index_cache::read(folder) else {
+        return Ok(());
+    };
+    let removed_set: HashSet<&str> = removed.iter().map(|s| s.as_str()).collect();
+    let mut touched = false;
+    for b in &mut cached.bundles {
+        let before = b.files.len();
+        b.files.retain(|f| !removed_set.contains(f.path.as_str()));
+        if b.files.len() != before {
+            touched = true;
+        }
+    }
+    let bundle_count = cached.bundles.len();
+    cached.bundles.retain(|b| !b.files.is_empty());
+    if cached.bundles.len() != bundle_count {
+        touched = true;
+    }
+    if touched {
+        index_cache::write(folder, &cached)?;
+    }
     Ok(())
 }
 
@@ -390,5 +429,43 @@ mod tests {
         trash_files(&src, &["DSC_0502.JPG".to_string()]).unwrap();
 
         assert!(!src_thumb.exists(), "thumb should be cleaned up after trash");
+    }
+
+    #[test]
+    fn trash_drops_files_from_cached_index() {
+        use crate::core::scanner::scan_folder;
+
+        let src = tempdir();
+        make_jpg(&src, "DSC_0600.JPG");
+        make_jpg(&src, "DSC_0601.JPG");
+        // Build the cache by running a real scan.
+        let idx_before = scan_folder(&src, false).unwrap();
+        assert_eq!(idx_before.bundles.len(), 2);
+
+        trash_files(&src, &["DSC_0600.JPG".to_string()]).unwrap();
+
+        // Cache must reflect the deletion without needing a re-scan; reading
+        // the cache directly is what the *next launch* would do.
+        let cached = index_cache::read(&src).expect("cache present");
+        let names: Vec<&str> = cached.bundles.iter().map(|b| b.base_name.as_str()).collect();
+        assert_eq!(names, vec!["DSC_0601"]);
+    }
+
+    #[test]
+    fn move_drops_files_from_source_cached_index() {
+        use crate::core::scanner::scan_folder;
+
+        let src = tempdir();
+        let dst = tempdir();
+        make_jpg(&src, "DSC_0700.JPG");
+        make_jpg(&src, "DSC_0701.JPG");
+        let idx_before = scan_folder(&src, false).unwrap();
+        assert_eq!(idx_before.bundles.len(), 2);
+
+        move_files(&src, &["DSC_0700.JPG".to_string()], &dst).unwrap();
+
+        let cached = index_cache::read(&src).expect("cache present");
+        let names: Vec<&str> = cached.bundles.iter().map(|b| b.base_name.as_str()).collect();
+        assert_eq!(names, vec!["DSC_0701"]);
     }
 }
