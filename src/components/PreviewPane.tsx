@@ -30,6 +30,38 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange }: Pro
     setNatural({ w: 0, h: 0 });
   }, [src]);
 
+  function clampOffset(dx: number, dy: number): { dx: number; dy: number } {
+    // While the image dimensions or container size aren't known yet, leave
+    // the offset alone — clamping against zeroed bounds would just snap
+    // everything to (0,0).
+    if (natural.w === 0 || container.w === 0) return { dx, dy };
+    // Keep at least this many CSS pixels of the image visible inside the
+    // container along each axis so the user can never drag the photo
+    // entirely off-screen and read the pane as black.
+    const margin = 60;
+    const maxDx = Math.max(0, (container.w + natural.w) / 2 - margin);
+    const maxDy = Math.max(0, (container.h + natural.h) / 2 - margin);
+    return {
+      dx: Math.max(-maxDx, Math.min(maxDx, dx)),
+      dy: Math.max(-maxDy, Math.min(maxDy, dy)),
+    };
+  }
+
+  // After the image dimensions or the container resizes, the previously-
+  // stored offset may no longer leave the image on-screen — clamp it back
+  // into the visible band so the next render isn't black.
+  useEffect(() => {
+    if (mode !== "full") return;
+    const clamped = clampOffset(pixelOffset.dx, pixelOffset.dy);
+    if (clamped.dx !== pixelOffset.dx || clamped.dy !== pixelOffset.dy) {
+      onPixelOffsetChange(clamped);
+    }
+    // clampOffset closes over `natural` and `container`; we deliberately
+    // don't list those as deps to keep the dependency list legible — the
+    // body re-derives its bounds each call.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [natural.w, natural.h, container.w, container.h, pixelOffset, mode]);
+
   function onMouseDown(e: React.MouseEvent) {
     if (mode !== "full" || !src) return;
     e.preventDefault();
@@ -43,10 +75,12 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange }: Pro
     const onMove = (ev: MouseEvent) => {
       const start = dragStart.current;
       if (!start) return;
-      onPixelOffsetChange({
-        dx: start.dx + (ev.clientX - start.x),
-        dy: start.dy + (ev.clientY - start.y),
-      });
+      onPixelOffsetChange(
+        clampOffset(
+          start.dx + (ev.clientX - start.x),
+          start.dy + (ev.clientY - start.y),
+        ),
+      );
     };
     const onUp = () => {
       dragStart.current = null;
