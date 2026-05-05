@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { ask, open } from "@tauri-apps/plugin-dialog";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { BundleRef, BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
 import type { PixelOffset, PreviewMode } from "./types/preview";
@@ -1156,6 +1156,28 @@ function App() {
     }
   }, []);
 
+  const revealActiveBundleInFileManager = useCallback(async () => {
+    if (!activeBundle || !index) return;
+    // Pick the file that's most useful to drag-drop into a browser /
+    // SNS app: latest developed JPG → in-camera JPG → first RAW.
+    // Falls back to the bundle's folder if no files are listed (shouldn't
+    // happen but be defensive).
+    const developed = activeBundle.files
+      .filter((f) => f.role === "developed")
+      .sort((a, b) => b.mtime.localeCompare(a.mtime));
+    const target =
+      developed[0] ??
+      activeBundle.files.find((f) => f.role === "jpeg") ??
+      activeBundle.files.find((f) => f.role === "raw") ??
+      activeBundle.files[0];
+    if (!target) return;
+    try {
+      await revealItemInDir(joinPath(index.folder_path, target.path));
+    } catch (e: unknown) {
+      setError(toMessage(e));
+    }
+  }, [activeBundle, index]);
+
   const openActive = useCallback(
     async (role: "raw" | "jpeg" | null) => {
       if (!index) return;
@@ -1576,6 +1598,7 @@ function App() {
               onSelectPreview={selectPreviewByPath}
               onTrashVariant={trashVariant}
               onShare={() => setShowShare(true)}
+              onRevealInFileManager={() => void revealActiveBundleInFileManager()}
               shareDisabled={
                 !appSettings.gallery?.worker_url?.trim() ||
                 !appSettings.gallery?.admin_token?.trim() ||

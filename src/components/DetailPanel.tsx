@@ -56,6 +56,10 @@ interface Props {
   onShare: () => void;
   /** When true the Share button is disabled (gallery not configured). */
   shareDisabled: boolean;
+  /** Reveal the bundle's "best for SNS upload" file in the OS file
+   *  manager (Explorer / Finder / xdg-open) with that file selected.
+   *  Lets the user drag the developed JPG straight into the browser. */
+  onRevealInFileManager: () => void;
   busy: boolean;
 
   sidecar: BundleSidecar | null;
@@ -95,6 +99,7 @@ export function DetailPanel({
   onOpen,
   onShare,
   shareDisabled,
+  onRevealInFileManager,
   busy,
   sidecar,
   sidecarLoading,
@@ -199,6 +204,18 @@ export function DetailPanel({
           }
         >
           Share…{suffix(selectedCount)}
+        </button>
+        <button
+          type="button"
+          onClick={onRevealInFileManager}
+          disabled={busy || multi}
+          title={
+            multi
+              ? "1バンドル選択時のみ"
+              : "現像済みJPGをエクスプローラで選択状態で開く（ブラウザにドラッグして SNS 投稿用）"
+          }
+        >
+          📂 Explorer
         </button>
       </div>
 
