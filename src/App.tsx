@@ -398,6 +398,14 @@ function App() {
     );
   }, [activeVariants, previewVariantIndex]);
 
+  // Reset the 100%-mode pan offset whenever the source variant changes —
+  // each photo has its own dimensions, and a leftover offset from a
+  // previous (larger / smaller / differently-cropped) image could push
+  // the new one entirely off-screen so the pane reads as black.
+  useEffect(() => {
+    setPixelOffset({ dx: 0, dy: 0 });
+  }, [currentPreviewVariant?.path]);
+
   // Resolved preview path — for RAW variants this is the cached embedded
   // JPEG (extracted on demand by `ensure_preview_image_path`); for
   // everything else it's just folder + variant.path resolved synchronously.
@@ -414,6 +422,11 @@ function App() {
       setPreviewSrc(joinPath(index.folder_path, currentPreviewVariant.path));
       return;
     }
+    // Clear immediately so the pane shows "No preview available" instead
+    // of the previous bundle's image while we wait for the async extract.
+    // Otherwise the user sees the old photo with the new pixelOffset and
+    // it can read as a misplaced/black tile mid-switch.
+    setPreviewSrc(null);
     let cancelled = false;
     void invoke<string>("ensure_preview_image_path", {
       folder: index.folder_path,
