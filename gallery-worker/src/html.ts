@@ -71,10 +71,17 @@ ${viewOnlyBanner}
 </header>
 <main id="grid" class="grid"></main>
 <div id="selBar" class="selbar" hidden>
-  <button id="selAll" type="button">全選択</button>
-  <span id="selCount">0 枚選択中</span>
-  <button id="selSave" type="button">保存</button>
-  <button id="selCancel" type="button">キャンセル</button>
+  <div class="selbar-row selbar-filters">
+    <button id="selAll" type="button">全</button>
+    <button id="selFav" type="button" title="★ FAV のみ">★</button>
+    <button id="selOk" type="button" title="✓ OK のみ">✓</button>
+    <button id="selFavOk" type="button" title="★ FAV と ✓ OK">★+✓</button>
+  </div>
+  <div class="selbar-row selbar-actions">
+    <span id="selCount">0 枚選択中</span>
+    <button id="selSave" type="button">保存</button>
+    <button id="selCancel" type="button">キャンセル</button>
+  </div>
 </div>
 <div id="toast" class="toast" hidden></div>
 <div id="lb" class="lb" hidden>
@@ -142,9 +149,12 @@ body.selecting .tile .sel-mark{display:flex}
 body.selecting .tile.selected{outline:3px solid #56a;outline-offset:-3px}
 body.selecting .tile.selected .sel-mark{background:#56a;border-color:#fff}
 body.selecting .tile .badge{display:none}
-.selbar{position:sticky;bottom:0;z-index:9;display:flex;align-items:center;gap:10px;padding:10px 14px max(10px,env(safe-area-inset-bottom));background:rgba(20,20,20,.95);border-top:1px solid #333;backdrop-filter:blur(8px)}
+.selbar{position:sticky;bottom:0;z-index:9;display:flex;flex-direction:column;gap:6px;padding:8px 14px max(8px,env(safe-area-inset-bottom));background:rgba(20,20,20,.95);border-top:1px solid #333;backdrop-filter:blur(8px)}
+.selbar-row{display:flex;gap:8px;align-items:center}
+.selbar-filters button{flex:1;min-width:0}
 .selbar #selCount{flex:1;font-size:13px}
-.selbar button{padding:8px 14px;font-size:13px;border-radius:6px;border:1px solid #345;background:#1f1f1f;color:#e8e8e8;cursor:pointer}
+.selbar button{padding:8px 12px;font-size:13px;border-radius:6px;border:1px solid #345;background:#1f1f1f;color:#e8e8e8;cursor:pointer;white-space:nowrap}
+.selbar button[disabled]{opacity:.4;cursor:default}
 .selbar #selSave{background:#0a7d3a;border-color:#0a7d3a;color:#fff;font-weight:600}
 .selbar #selSave[disabled]{opacity:.4}
 .toast{position:fixed;left:50%;bottom:30%;transform:translateX(-50%);background:rgba(0,0,0,.85);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:100;pointer-events:none;max-width:80vw;text-align:center}
@@ -179,7 +189,7 @@ const $=id=>document.getElementById(id);
 const grid=$("grid"),lb=$("lb"),lbImg=$("lbImg"),lbMeta=$("lbMeta"),lbPrev=$("lbPrev"),lbNext=$("lbNext"),lbClose=$("lbClose"),lbStage=$("lbStage");
 const decOk=$("decOk"),decNg=$("decNg"),decFav=$("decFav");
 const info=$("info"),hint=$("hint");
-const selBtn=$("selBtn"),selBar=$("selBar"),selCount=$("selCount"),selSave=$("selSave"),selCancel=$("selCancel"),selAll=$("selAll"),toast=$("toast");
+const selBtn=$("selBtn"),selBar=$("selBar"),selCount=$("selCount"),selSave=$("selSave"),selCancel=$("selCancel"),selAll=$("selAll"),selFav=$("selFav"),selOk=$("selOk"),selFavOk=$("selFavOk"),toast=$("toast");
 const photos=G.photos,decisions=G.decisions||{},def=G.default_decision;
 const viewOnly=!!G.viewOnly;
 const photoUrl=p=>"/"+G.gid+"/p/"+p.pid;
@@ -238,28 +248,45 @@ function toggleSelect(pid,tileEl){
   const m=tileEl.querySelector(".sel-mark");if(m)m.textContent=selectedPids.has(pid)?"✓":"";
   updateSelCount();
 }
+function countMatching(pred){return photos.reduce((n,p)=>pred(p)?n+1:n,0);}
 function updateSelCount(){
   selCount.textContent=selectedPids.size+" 枚選択中";
   selSave.disabled=selectedPids.size===0;
-  selAll.textContent=(selectedPids.size===photos.length&&photos.length>0)?"全解除":"全選択";
+  selAll.textContent=(selectedPids.size===photos.length&&photos.length>0)?"全解除":"全";
+  // Disable filter buttons when their group is empty so the user gets
+  // immediate feedback that "no FAV exists in this gallery" rather than
+  // tapping ★ and seeing 0 selected.
+  selFav.disabled=countMatching(p=>decisionFor(p.pid)==="fav")===0;
+  selOk.disabled=countMatching(p=>decisionFor(p.pid)==="ok")===0;
+  selFavOk.disabled=countMatching(p=>{const d=decisionFor(p.pid);return d==="fav"||d==="ok";})===0;
 }
-function toggleSelectAll(){
-  if(selectedPids.size===photos.length){
-    selectedPids.clear();
-  }else{
-    photos.forEach(p=>selectedPids.add(p.pid));
-  }
+function applySelectionToTiles(){
   grid.querySelectorAll(".tile").forEach(t=>{
     const sel=selectedPids.has(t.dataset.pid);
     t.classList.toggle("selected",sel);
     const m=t.querySelector(".sel-mark");if(m)m.textContent=sel?"✓":"";
   });
+}
+function selectByFilter(pred){
+  selectedPids.clear();
+  photos.forEach(p=>{if(pred(p))selectedPids.add(p.pid);});
+  applySelectionToTiles();
   updateSelCount();
+}
+function toggleSelectAll(){
+  if(selectedPids.size===photos.length){
+    selectByFilter(()=>false);
+  }else{
+    selectByFilter(()=>true);
+  }
 }
 selBtn.addEventListener("click",()=>setSelecting(!selecting));
 selCancel.addEventListener("click",()=>setSelecting(false));
 selSave.addEventListener("click",()=>downloadSelected([...selectedPids]));
 selAll.addEventListener("click",toggleSelectAll);
+selFav.addEventListener("click",()=>selectByFilter(p=>decisionFor(p.pid)==="fav"));
+selOk.addEventListener("click",()=>selectByFilter(p=>decisionFor(p.pid)==="ok"));
+selFavOk.addEventListener("click",()=>selectByFilter(p=>{const d=decisionFor(p.pid);return d==="fav"||d==="ok";}));
 
 function showToast(msg,ms){
   toast.textContent=msg;toast.hidden=false;
