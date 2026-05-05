@@ -146,8 +146,9 @@ header .meta #dl:active{background:#234}
 .tile.is-default .badge{opacity:.55}
 .tile .sel-mark{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.5);border:2px solid #fff;display:none;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700}
 body.selecting .tile .sel-mark{display:flex}
-body.selecting .tile.selected{outline:3px solid #56a;outline-offset:-3px}
-body.selecting .tile.selected .sel-mark{background:#56a;border-color:#fff}
+body.selecting .tile.selected{outline:4px solid #6da3ff;outline-offset:-4px}
+body.selecting .tile.selected::after{content:"";position:absolute;inset:0;background:rgba(86,170,255,.18);pointer-events:none}
+body.selecting .tile.selected .sel-mark{background:#6da3ff;border-color:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
 body.selecting .tile .badge{display:none}
 .selbar{position:sticky;bottom:0;z-index:9;display:flex;flex-direction:column;gap:6px;padding:8px 14px max(8px,env(safe-area-inset-bottom));background:rgba(20,20,20,.95);border-top:1px solid #333;backdrop-filter:blur(8px)}
 .selbar-row{display:flex;gap:8px;align-items:center}
@@ -267,11 +268,16 @@ function applySelectionToTiles(){
     const m=t.querySelector(".sel-mark");if(m)m.textContent=sel?"✓":"";
   });
 }
-function selectByFilter(pred){
+function selectByFilter(pred,label){
   selectedPids.clear();
   photos.forEach(p=>{if(pred(p))selectedPids.add(p.pid);});
   applySelectionToTiles();
   updateSelCount();
+  if(label){
+    showToast(selectedPids.size>0
+      ? label+" "+selectedPids.size+" 枚を選択中"
+      : label+" に該当する写真はありません",1600);
+  }
 }
 function toggleSelectAll(){
   if(selectedPids.size===photos.length){
@@ -284,9 +290,9 @@ selBtn.addEventListener("click",()=>setSelecting(!selecting));
 selCancel.addEventListener("click",()=>setSelecting(false));
 selSave.addEventListener("click",()=>downloadSelected([...selectedPids]));
 selAll.addEventListener("click",toggleSelectAll);
-selFav.addEventListener("click",()=>selectByFilter(p=>decisionFor(p.pid)==="fav"));
-selOk.addEventListener("click",()=>selectByFilter(p=>decisionFor(p.pid)==="ok"));
-selFavOk.addEventListener("click",()=>selectByFilter(p=>{const d=decisionFor(p.pid);return d==="fav"||d==="ok";}));
+selFav.addEventListener("click",()=>selectByFilter(p=>decisionFor(p.pid)==="fav","★ FAV"));
+selOk.addEventListener("click",()=>selectByFilter(p=>decisionFor(p.pid)==="ok","✓ OK"));
+selFavOk.addEventListener("click",()=>selectByFilter(p=>{const d=decisionFor(p.pid);return d==="fav"||d==="ok";},"★+✓"));
 
 function showToast(msg,ms){
   toast.textContent=msg;toast.hidden=false;
