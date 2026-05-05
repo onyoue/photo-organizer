@@ -1156,27 +1156,47 @@ function App() {
     }
   }, []);
 
-  const revealActiveBundleInFileManager = useCallback(async () => {
-    if (!activeBundle || !index) return;
-    // Pick the file that's most useful to drag-drop into a browser /
-    // SNS app: latest developed JPG → in-camera JPG → first RAW.
-    // Falls back to the bundle's folder if no files are listed (shouldn't
-    // happen but be defensive).
+  // Pick the bundle file most useful for "share to SNS" actions: latest
+  // developed JPG → in-camera JPG → first RAW. Shared between Reveal in
+  // Explorer and Copy to Clipboard so they target the same file.
+  const pickShareableFile = useCallback(() => {
+    if (!activeBundle) return null;
     const developed = activeBundle.files
       .filter((f) => f.role === "developed")
       .sort((a, b) => b.mtime.localeCompare(a.mtime));
-    const target =
+    return (
       developed[0] ??
       activeBundle.files.find((f) => f.role === "jpeg") ??
       activeBundle.files.find((f) => f.role === "raw") ??
-      activeBundle.files[0];
+      activeBundle.files[0] ??
+      null
+    );
+  }, [activeBundle]);
+
+  const revealActiveBundleInFileManager = useCallback(async () => {
+    if (!index) return;
+    const target = pickShareableFile();
     if (!target) return;
     try {
       await revealItemInDir(joinPath(index.folder_path, target.path));
     } catch (e: unknown) {
       setError(toMessage(e));
     }
-  }, [activeBundle, index]);
+  }, [index, pickShareableFile]);
+
+  const copyActiveBundleImageToClipboard = useCallback(async () => {
+    if (!index) return;
+    const target = pickShareableFile();
+    if (!target) return;
+    try {
+      await invoke("copy_image_to_clipboard", {
+        path: joinPath(index.folder_path, target.path),
+      });
+      setToast("✓ クリップボードにコピーしました");
+    } catch (e: unknown) {
+      setError(toMessage(e));
+    }
+  }, [index, pickShareableFile]);
 
   const openActive = useCallback(
     async (role: "raw" | "jpeg" | null) => {
@@ -1599,6 +1619,7 @@ function App() {
               onTrashVariant={trashVariant}
               onShare={() => setShowShare(true)}
               onRevealInFileManager={() => void revealActiveBundleInFileManager()}
+              onCopyImageToClipboard={() => void copyActiveBundleImageToClipboard()}
               shareDisabled={
                 !appSettings.gallery?.worker_url?.trim() ||
                 !appSettings.gallery?.admin_token?.trim() ||

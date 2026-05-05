@@ -8,6 +8,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(commands::gallery::ShareCancelFlag::default())
         .invoke_handler(tauri::generate_handler![
             commands::folder::open_folder,
@@ -18,6 +19,7 @@ pub fn run() {
             commands::fileops::move_bundle,
             commands::fileops::copy_bundle,
             commands::fileops::open_path,
+            commands::fileops::copy_image_to_clipboard,
             commands::sidecar::get_bundle_sidecar,
             commands::sidecar::save_bundle_sidecar,
             commands::sidecar::set_bundle_rating,

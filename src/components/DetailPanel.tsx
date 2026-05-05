@@ -60,6 +60,10 @@ interface Props {
    *  manager (Explorer / Finder / xdg-open) with that file selected.
    *  Lets the user drag the developed JPG straight into the browser. */
   onRevealInFileManager: () => void;
+  /** Decode the bundle's developed JPG and place it on the OS
+   *  clipboard so the user can paste-as-image into apps that accept
+   *  it (Discord, Slack, X web composer in some browsers, etc). */
+  onCopyImageToClipboard: () => void;
   busy: boolean;
 
   sidecar: BundleSidecar | null;
@@ -100,6 +104,7 @@ export function DetailPanel({
   onShare,
   shareDisabled,
   onRevealInFileManager,
+  onCopyImageToClipboard,
   busy,
   sidecar,
   sidecarLoading,
@@ -216,6 +221,18 @@ export function DetailPanel({
           }
         >
           📂 Explorer
+        </button>
+        <button
+          type="button"
+          onClick={onCopyImageToClipboard}
+          disabled={busy || multi}
+          title={
+            multi
+              ? "1バンドル選択時のみ"
+              : "現像済みJPGをクリップボードにコピー（Discord・Slack・X web composer 等にペースト可能）"
+          }
+        >
+          📋 Copy
         </button>
       </div>
 
