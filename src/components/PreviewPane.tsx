@@ -100,7 +100,12 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange }: Pro
   }
 
   const url = convertFileSrc(src);
-  const ready = natural.w > 0 && natural.h > 0;
+  const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    setNatural({
+      w: e.currentTarget.naturalWidth,
+      h: e.currentTarget.naturalHeight,
+    });
+  };
 
   if (mode === "fit") {
     return (
@@ -109,21 +114,19 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange }: Pro
           src={url}
           alt=""
           className="preview-img fit"
-          onLoad={(e) =>
-            setNatural({
-              w: e.currentTarget.naturalWidth,
-              h: e.currentTarget.naturalHeight,
-            })
-          }
+          onLoad={onImgLoad}
           draggable={false}
         />
       </div>
     );
   }
 
-  // full (100%) mode: pan with drag, position from pixelOffset.
-  const imgX = (container.w - natural.w) / 2 + pixelOffset.dx;
-  const imgY = (container.h - natural.h) / 2 + pixelOffset.dy;
+  // 100% mode: the image is centered via CSS (`top/left: 50%` + a -50%
+  // transform). The pan offset is composed into the same transform here.
+  // We deliberately don't gate display on knowing `natural` — the browser
+  // already knows the natural size from the file, and waiting for our
+  // `onLoad` to round-trip into React state was leaving the pane black
+  // for a frame on every fit → full switch.
   return (
     <div
       className="preview-pane full"
@@ -134,13 +137,10 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange }: Pro
         src={url}
         alt=""
         className="preview-img full"
-        style={{ left: imgX, top: imgY, opacity: ready ? 1 : 0 }}
-        onLoad={(e) =>
-          setNatural({
-            w: e.currentTarget.naturalWidth,
-            h: e.currentTarget.naturalHeight,
-          })
-        }
+        style={{
+          transform: `translate(calc(-50% + ${pixelOffset.dx}px), calc(-50% + ${pixelOffset.dy}px))`,
+        }}
+        onLoad={onImgLoad}
         draggable={false}
       />
     </div>

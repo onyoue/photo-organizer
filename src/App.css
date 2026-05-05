@@ -1553,7 +1553,14 @@ html,
 }
 
 .preview-img.full {
+  /* Centering is done with `top/left: 50%` + a -50% transform inside the
+   * inline `style` so we never need React state to know the image's
+   * natural dimensions before the first paint — that's what was leaving
+   * the pane black for a frame on fit→full switch. The pan offset is
+   * composed into the same transform via the inline style. */
   position: absolute;
+  top: 50%;
+  left: 50%;
   display: block;
 }
 
