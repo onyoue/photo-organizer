@@ -4,6 +4,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
+use rayon::prelude::*;
 use ulid::Ulid;
 
 use crate::core::index_cache::{self, INDEX_VERSION};
@@ -234,8 +235,14 @@ fn walk_folder(
         })
         .unwrap_or_default();
 
-    let mut bundles: Vec<BundleSummary> = groups
-        .into_iter()
+    // Materialise as a Vec so rayon can parallelise the per-bundle work.
+    // The expensive step is `compute_bundle_phash` — it loads the bundle's
+    // primary visual file and runs the dHash, which takes 30–200ms per
+    // bundle (RAW being the slow end). Without this, a 500-bundle folder
+    // takes a full minute to re-scan.
+    let group_entries: Vec<(String, Vec<BundleFile>)> = groups.into_iter().collect();
+    let mut bundles: Vec<BundleSummary> = group_entries
+        .into_par_iter()
         .map(|(base_name, mut files)| {
             files.sort_by_key(|f| (role_sort_key(f.role), f.path.clone()));
             let bundle_id = prior_id_by_name
