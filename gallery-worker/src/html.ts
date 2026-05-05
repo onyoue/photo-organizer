@@ -151,6 +151,11 @@ body.selecting .tile.selected img{opacity:.45;transition:opacity .12s}
 body.selecting .tile.selected .sel-mark{background:#6da3ff;border-color:#fff;width:30px;height:30px;font-size:16px;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
 body.selecting .tile .badge{display:none}
 .selbar{position:sticky;bottom:0;z-index:9;display:flex;flex-direction:column;gap:6px;padding:8px 14px max(8px,env(safe-area-inset-bottom));background:rgba(20,20,20,.95);border-top:1px solid #333;backdrop-filter:blur(8px)}
+/* The HTML hidden attribute would normally apply display:none via the
+   UA stylesheet, but our display:flex above wins on equal specificity.
+   Bump this rule one notch so the bar actually disappears until the
+   user enters selection mode. */
+.selbar[hidden]{display:none}
 .selbar-row{display:flex;gap:8px;align-items:center}
 .selbar-filters button{flex:1;min-width:0}
 .selbar #selCount{flex:1;font-size:13px}
