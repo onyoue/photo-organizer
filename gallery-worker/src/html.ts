@@ -146,9 +146,9 @@ header .meta #dl:active{background:#234}
 .tile.is-default .badge{opacity:.55}
 .tile .sel-mark{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.5);border:2px solid #fff;display:none;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700}
 body.selecting .tile .sel-mark{display:flex}
-body.selecting .tile.selected{outline:4px solid #6da3ff;outline-offset:-4px}
-body.selecting .tile.selected::after{content:"";position:absolute;inset:0;background:rgba(86,170,255,.18);pointer-events:none}
-body.selecting .tile.selected .sel-mark{background:#6da3ff;border-color:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
+body.selecting .tile.selected{outline:4px solid #6da3ff;outline-offset:-4px;background:#0a2a55}
+body.selecting .tile.selected img{opacity:.45;transition:opacity .12s}
+body.selecting .tile.selected .sel-mark{background:#6da3ff;border-color:#fff;width:30px;height:30px;font-size:16px;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
 body.selecting .tile .badge{display:none}
 .selbar{position:sticky;bottom:0;z-index:9;display:flex;flex-direction:column;gap:6px;padding:8px 14px max(8px,env(safe-area-inset-bottom));background:rgba(20,20,20,.95);border-top:1px solid #333;backdrop-filter:blur(8px)}
 .selbar-row{display:flex;gap:8px;align-items:center}
