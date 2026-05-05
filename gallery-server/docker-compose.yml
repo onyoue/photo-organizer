@@ -1,0 +1,23 @@
+# Run alongside `cloudflared tunnel run <tunnel-name>` for HTTPS-on-the-public-
+# internet without opening any ports on your router.
+#
+# 1. Copy .env.example → .env, fill in ADMIN_TOKEN.
+# 2. `docker compose up -d`.
+# 3. Point cloudflared at http://localhost:8787 — tunnel config in your
+#    Cloudflare Zero Trust dashboard.
+# 4. In the desktop app: Settings → Gallery → Worker URL = your public
+#    https://<tunnel>.example.com URL, Admin Token = your ADMIN_TOKEN.
+
+services:
+  gallery:
+    build: .
+    container_name: cullback-gallery
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # Expose only on localhost; cloudflared handles the public side.
+      # Drop "127.0.0.1:" to make this reachable on the LAN.
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./data:/data
