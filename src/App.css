@@ -768,6 +768,32 @@ html,
   margin-top: 2px;
 }
 
+.search-distance-tag {
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
+.search-distance-tag.tone-strong {
+  background: #e1f0d6;
+  color: #2a6a1f;
+}
+
+.search-distance-tag.tone-ok {
+  background: #fdf6e3;
+  color: #6a4a00;
+}
+
+.search-distance-tag.tone-weak {
+  background: #ececec;
+  color: #777;
+}
+
+.search-distance-num {
+  color: #999;
+}
+
 .search-hit-actions {
   display: flex;
   flex-direction: column;

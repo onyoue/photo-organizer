@@ -99,9 +99,21 @@ pub async fn search_image_across_folders(
             let mut had_any_phash = false;
             for b in &index.bundles {
                 bundles_total += 1;
-                let Some(h) = b.phash else { continue };
+                // Compare the query against both the bundle's full-image
+                // hash and its centered-square hash; take the smaller
+                // distance. Either is enough — the SNS image at hand
+                // matches whichever variant was closer to its actual
+                // content (full vs center-cropped).
+                let dist_full = b.phash.map(|h| phash::hamming_distance(target, h));
+                let dist_sq = b
+                    .phash_square
+                    .map(|h| phash::hamming_distance(target, h));
+                let dist = match (dist_full, dist_sq) {
+                    (Some(a), Some(b)) => a.min(b),
+                    (Some(a), None) | (None, Some(a)) => a,
+                    (None, None) => continue,
+                };
                 had_any_phash = true;
-                let dist = phash::hamming_distance(target, h);
                 if dist <= max_distance {
                     all_hits.push(SearchHit {
                         folder_path: folder_path.display().to_string(),

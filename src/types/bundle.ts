@@ -29,6 +29,10 @@ export interface BundleSummary {
    *  it just round-trips back to the Rust search command. Absent when
    *  computation failed (file missing, decode error, etc.). */
   phash?: string;
+  /** dHash of the centered 1:1 crop of the same source. Pairs with `phash`
+   *  to keep cropped SNS uploads (Instagram especially) within search
+   *  reach. Absent on bundles last hashed before the schema addition. */
+  phash_square?: string;
 }
 
 export interface BundleRef {

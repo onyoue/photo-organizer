@@ -21,7 +21,20 @@ interface Props {
 
 const RENDERABLE = /\.(jpe?g|png|webp|gif)$/i;
 const MAX_RESULTS = 20;
-const MAX_DISTANCE = 18; // dHash distances under ~18 are usually meaningful
+// Always pull the top-N by ascending distance and let the user judge —
+// SNS-side cropping (especially Instagram's center 1:1) commonly pushes
+// real matches into the 20-40 range where a strict cutoff would silently
+// drop them. The UI labels each row by distance band so weak matches are
+// obvious without being filtered out.
+const MAX_DISTANCE = 64;
+
+function distanceLabel(d: number): { text: string; tone: "strong" | "ok" | "weak" } {
+  if (d <= 8) return { text: "ほぼ確実", tone: "strong" };
+  if (d <= 16) return { text: "強い一致", tone: "strong" };
+  if (d <= 24) return { text: "一致の可能性", tone: "ok" };
+  if (d <= 32) return { text: "弱い一致", tone: "ok" };
+  return { text: "参考", tone: "weak" };
+}
 
 export function SearchDialog({ initialRoot, onClose, onRootSelected }: Props) {
   const [root, setRoot] = useState<string | null>(initialRoot);
@@ -240,8 +253,8 @@ export function SearchDialog({ initialRoot, onClose, onRootSelected }: Props) {
               </div>
               {results.hits.length === 0 && (
                 <div className="search-empty">
-                  距離 {MAX_DISTANCE} 以下のマッチはありませんでした。
-                  別の画像で試すか、検索ルートを見直してください。
+                  マッチがありません。検索ルート以下のフォルダがすべて pHash 未計算
+                  かもしれません — 検索したい撮影会フォルダを開いて Re-scan してください。
                 </div>
               )}
               <ul className="search-hit-list">
@@ -273,7 +286,19 @@ export function SearchDialog({ initialRoot, onClose, onRootSelected }: Props) {
                             {folderShort(h.folder_path)}
                           </div>
                           <div className="search-hit-distance">
-                            距離 {h.distance}
+                            {(() => {
+                              const lbl = distanceLabel(h.distance);
+                              return (
+                                <>
+                                  <span className={`search-distance-tag tone-${lbl.tone}`}>
+                                    {lbl.text}
+                                  </span>{" "}
+                                  <span className="search-distance-num">
+                                    距離 {h.distance}
+                                  </span>
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                         <div className="search-hit-actions">

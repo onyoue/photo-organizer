@@ -9,7 +9,7 @@
 //!   ask the user to confirm matches
 //! - 64-bit hash → cheap Hamming-distance comparison, store as u64
 
-use image::{imageops::FilterType, DynamicImage};
+use image::{imageops::FilterType, DynamicImage, GenericImageView};
 
 /// Compute a 64-bit difference hash from a `DynamicImage`.
 ///
@@ -42,6 +42,25 @@ pub fn dhash(img: &DynamicImage) -> u64 {
 /// after some manipulation".
 pub fn hamming_distance(a: u64, b: u64) -> u32 {
     (a ^ b).count_ones()
+}
+
+/// dHash of the image's centered 1:1 crop. Pairs with the full-image
+/// dhash for the cross-folder search index — Instagram (and to a lesser
+/// extent X / note) typically center-crop landscape / portrait uploads
+/// to a square, which moves the full-image hash 20-40 bits away from
+/// the original. Hashing the local image's center-square separately
+/// gives the search a low-distance candidate to match against.
+pub fn dhash_centered_square(img: &DynamicImage) -> u64 {
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 {
+        return 0;
+    }
+    let side = w.min(h);
+    let x = (w - side) / 2;
+    let y = (h - side) / 2;
+    // Already-square images are returned as-is by crop_imm — no waste.
+    let cropped = img.crop_imm(x, y, side, side);
+    dhash(&cropped)
 }
 
 #[cfg(test)]

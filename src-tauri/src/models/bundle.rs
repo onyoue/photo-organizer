@@ -65,6 +65,18 @@ pub struct BundleSummary {
         with = "phash_hex_opt"
     )]
     pub phash: Option<u64>,
+    /// dHash of the centered 1:1 crop of the same source. Boosts recall
+    /// against SNS-cropped uploads (Instagram in particular): the
+    /// platform's center-square crop pushes the full-image dHash 20-40
+    /// bits away from a low-distance match, but matches this hash
+    /// closely. `None` on bundles that pre-date the schema addition —
+    /// recomputed on next scan.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "phash_hex_opt"
+    )]
+    pub phash_square: Option<u64>,
 }
 
 /// Serde adapter that round-trips `Option<u64>` through a 16-char hex string.

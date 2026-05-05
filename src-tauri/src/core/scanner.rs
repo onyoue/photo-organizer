@@ -234,6 +234,14 @@ fn walk_folder(
                 .collect()
         })
         .unwrap_or_default();
+    let prior_phash_square_by_name: HashMap<&str, u64> = prior
+        .map(|p| {
+            p.bundles
+                .iter()
+                .filter_map(|b| b.phash_square.map(|h| (b.base_name.as_str(), h)))
+                .collect()
+        })
+        .unwrap_or_default();
 
     // Materialise as a Vec so rayon can parallelise the per-bundle work.
     // The expensive step is `compute_bundle_phash` — it loads the bundle's
@@ -264,13 +272,19 @@ fn walk_folder(
                 .map(|s| s.tags.clone())
                 .unwrap_or_default();
 
-            // Cross-folder pHash search: prefer the cached value, otherwise
-            // compute from the bundle's primary visual file. Skipping on
-            // failure is fine — the search just won't surface this bundle.
-            let phash = prior_phash_by_name
+            // Cross-folder pHash search: reuse both cached hashes when
+            // present. If either is missing (e.g. caches written before the
+            // square variant was added) we recompute both — the dominant
+            // cost is loading the image, and the second hash on the same
+            // DynamicImage is essentially free.
+            let cached_full = prior_phash_by_name.get(base_name.as_str()).copied();
+            let cached_square = prior_phash_square_by_name
                 .get(base_name.as_str())
-                .copied()
-                .or_else(|| compute_bundle_phash(folder, &files));
+                .copied();
+            let (phash, phash_square) = match (cached_full, cached_square) {
+                (Some(p), Some(sq)) => (Some(p), Some(sq)),
+                _ => compute_bundle_phashes(folder, &files),
+            };
 
             BundleSummary {
                 bundle_id,
@@ -284,6 +298,7 @@ fn walk_folder(
                 feedback_by_model,
                 tags,
                 phash,
+                phash_square,
             }
         })
         .collect();
@@ -299,21 +314,32 @@ fn walk_folder(
     })
 }
 
-/// Pick the visual file most representative of a bundle and dHash it.
+/// Pick the visual file most representative of a bundle and dHash it
+/// twice — once over the full image and once over the centered 1:1 crop.
 /// Mirrors the frontend's `selectThumbnailSource` precedence: developed
 /// JPG/PNG/TIFF → in-camera JPG → RAW (via rawler embedded preview).
-/// Returns None on any failure — phash absence just means the bundle
-/// won't be searchable cross-folder, not that the scan should fail.
-fn compute_bundle_phash(folder: &Path, files: &[BundleFile]) -> Option<u64> {
-    let primary = files
+/// Returns (None, None) on any failure — phash absence just means the
+/// bundle won't be searchable cross-folder, not that the scan should fail.
+fn compute_bundle_phashes(
+    folder: &Path,
+    files: &[BundleFile],
+) -> (Option<u64>, Option<u64>) {
+    let Some(primary) = files
         .iter()
         .find(|f| f.role == FileRole::Developed)
         .or_else(|| files.iter().find(|f| f.role == FileRole::Jpeg))
-        .or_else(|| files.iter().find(|f| f.role == FileRole::Raw))?;
+        .or_else(|| files.iter().find(|f| f.role == FileRole::Raw))
+    else {
+        return (None, None);
+    };
     let path = folder.join(&primary.path);
-    // RAW path goes through rawler; image::open handles JPG/PNG/TIFF.
-    let img = thumbnail::load_for_hashing(&path).ok()?;
-    Some(phash::dhash(&img))
+    let Ok(img) = thumbnail::load_for_hashing(&path) else {
+        return (None, None);
+    };
+    (
+        Some(phash::dhash(&img)),
+        Some(phash::dhash_centered_square(&img)),
+    )
 }
 
 fn collect_post_info(sidecar: Option<&BundleSidecar>) -> (bool, Vec<String>, bool) {
