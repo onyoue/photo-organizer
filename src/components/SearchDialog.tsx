@@ -169,7 +169,11 @@ export function SearchDialog({ initialRoot, onClose, onRootSelected }: Props) {
   const ready = !!root && !!queryImage && busy !== "searching";
 
   return (
-    <div className="settings-backdrop" onClick={onClose}>
+    // Backdrop click does NOT close — losing search state (selected image,
+    // typed model name, fetched results) to a misclick is more painful
+    // here than in the other dialogs. Use the × in the header or the
+    // 閉じる button at the bottom.
+    <div className="settings-backdrop">
       <div
         className="settings-dialog search-dialog"
         onClick={(e) => e.stopPropagation()}
