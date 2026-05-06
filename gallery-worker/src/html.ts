@@ -168,7 +168,7 @@ body.selecting .tile .badge{display:none}
 .lb[hidden]{display:none}
 .lb .close{position:absolute;top:max(10px,env(safe-area-inset-top));right:10px;width:44px;height:44px;background:rgba(0,0,0,.5);border:0;color:#fff;font-size:24px;border-radius:50%;cursor:pointer;z-index:2}
 .lb-stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;user-select:none}
-.lb-img{max-width:100%;max-height:100%;object-fit:contain;-webkit-user-drag:none;pointer-events:none;transform-origin:center center;transition:transform .08s linear}
+.lb-img{max-width:100%;max-height:100%;object-fit:contain;-webkit-user-drag:none;pointer-events:none;transform-origin:center center;will-change:transform}
 .lb-bottom{padding:10px 14px max(14px,env(safe-area-inset-bottom));background:rgba(0,0,0,.85);border-top:1px solid #222}
 .lb-meta{text-align:center;font-size:12px;color:#aaa;margin-bottom:10px}
 .lb-actions{display:flex;gap:10px}
@@ -454,9 +454,11 @@ lbStage.addEventListener("touchstart",e=>{
   }else if(e.touches.length===1){
     const t=e.touches[0];
     // Double-tap detection — two taps within 300ms toggles 1× ↔ 2×.
+    // Symmetric: zoom out from any current scale, zoom in from 1×.
     const now=Date.now();
-    if(scale<=1.01&&now-lastTap<300){
-      scale=2;offX=0;offY=0;applyTransform();
+    if(now-lastTap<300){
+      if(scale>1.01){resetZoom();}
+      else{scale=2;offX=0;offY=0;applyTransform();}
       lastTap=0;
       return;
     }
