@@ -249,6 +249,7 @@ pub async fn share_gallery(
         photos: photo_records,
         last_decisions: Default::default(),
         last_fetched_at: None,
+        last_views: None,
     };
 
     {
@@ -302,6 +303,10 @@ pub async fn fetch_gallery_feedback(
 
     let client = GalleryClient::new(&settings.gallery)?;
     let resp = client.fetch_feedback(&gid).await?;
+    // The view-count fetch is best-effort. A worker that's still running
+    // an old build (no /views endpoint) shouldn't break feedback retrieval
+    // — we just leave last_views unchanged in that case.
+    let views = client.fetch_views(&gid).await.ok().flatten();
 
     let local = {
         let dir = dir.clone();
@@ -316,13 +321,17 @@ pub async fn fetch_gallery_feedback(
         AppError::InvalidArgument("gallery not found in local store".into())
     })?;
 
-    // Cache the fetched decisions on the local record so the next app
-    // start can show state in the galleries dialog without re-fetching.
+    // Cache the fetched decisions and view-receipt on the local record so
+    // the next app start can show state in the galleries dialog without
+    // re-fetching.
     {
         let dir = dir.clone();
         let mut updated = local.clone();
         updated.last_decisions = resp.decisions.clone();
         updated.last_fetched_at = Some(chrono::Utc::now().to_rfc3339());
+        if let Some(v) = views.clone() {
+            updated.last_views = Some(v);
+        }
         tauri::async_runtime::spawn_blocking(move || gallery_store::upsert(&dir, updated))
             .await
             .map_err(|e| AppError::InvalidArgument(format!("save task: {e}")))??;

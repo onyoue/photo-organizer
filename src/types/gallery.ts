@@ -11,6 +11,12 @@ export interface GalleryPhotoRecord {
   content_type: string;
 }
 
+export interface ViewedRecord {
+  first_viewed_at: string;
+  last_viewed_at: string;
+  view_count: number;
+}
+
 export interface GalleryRecord {
   gid: string;
   name: string;
@@ -30,6 +36,9 @@ export interface GalleryRecord {
   last_decisions?: Record<string, Decision>;
   /** ISO-8601 timestamp of the last successful feedback fetch. */
   last_fetched_at?: string;
+  /** Cached read-receipt — `undefined` when the model hasn't opened the
+   *  gallery yet, or when this record predates the view-tracking field. */
+  last_views?: ViewedRecord;
 }
 
 export interface GalleryFeedbackEntry {

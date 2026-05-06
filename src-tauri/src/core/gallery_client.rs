@@ -42,6 +42,15 @@ pub struct GalleryStats {
     pub r2_bytes_limit: u64,
 }
 
+/// Mirrors the Worker's ViewedRecord — read-receipt for one gallery.
+/// `None` from the worker means the model hasn't opened the page yet.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ViewedRecord {
+    pub first_viewed_at: String,
+    pub last_viewed_at: String,
+    pub view_count: u32,
+}
+
 /// Thin reqwest wrapper that knows how to talk to the gallery Worker.
 /// Constructed from `GallerySettings`; bails out early if the user has
 /// not configured a worker URL or admin token.
@@ -125,6 +134,22 @@ impl GalleryClient {
             .map_err(io_err)?;
         let resp = ensure_success_returning(resp).await?;
         resp.json::<FeedbackResponse>().await.map_err(io_err)
+    }
+
+    pub async fn fetch_views(&self, gid: &str) -> AppResult<Option<ViewedRecord>> {
+        let url = format!("{}/admin/{}/views", self.base_url, gid);
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(io_err)?;
+        let resp = ensure_success_returning(resp).await?;
+        // Worker returns the JSON value `null` (not an empty body) when the
+        // gallery has no recorded views yet — `Option::deserialize` handles
+        // that natively.
+        resp.json::<Option<ViewedRecord>>().await.map_err(io_err)
     }
 
     pub async fn fetch_stats(&self) -> AppResult<GalleryStats> {

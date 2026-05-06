@@ -8,6 +8,7 @@ import type {
   PhotoEntry,
   StatsResponse,
   StatsTotals,
+  ViewedRecord,
 } from "./types";
 import {
   GID_RE,
@@ -17,6 +18,7 @@ import {
   badRequest,
   json,
   kvKeyForGallery,
+  kvKeyForViewed,
   kvPrefixForFeedback,
   notFound,
   r2KeyForPhoto,
@@ -64,6 +66,9 @@ export async function handleAdmin(
   }
   if (action === "feedback" && req.method === "GET") {
     return getFeedback(env, gid);
+  }
+  if (action === "views" && req.method === "GET") {
+    return getViews(env, gid);
   }
 
   return notFound();
@@ -174,6 +179,19 @@ async function finalizeGallery(env: Env, gid: string): Promise<Response> {
   return json({ gid, finalized: true });
 }
 
+/// Read receipt for the gallery — null when the model hasn't opened
+/// it yet. The photographer's own /view path doesn't bump this counter.
+async function getViews(env: Env, gid: string): Promise<Response> {
+  const raw = await env.GALLERY_KV.get(kvKeyForViewed(gid));
+  if (!raw) return json(null, 200, { "cache-control": "no-store" });
+  try {
+    const parsed = JSON.parse(raw) as ViewedRecord;
+    return json(parsed, 200, { "cache-control": "no-store" });
+  } catch {
+    return json(null, 200, { "cache-control": "no-store" });
+  }
+}
+
 async function getFeedback(env: Env, gid: string): Promise<Response> {
   const meta = await loadMeta(env, gid);
   if (!meta) return notFound();
@@ -232,8 +250,9 @@ async function deleteGallery(env: Env, gid: string): Promise<Response> {
     for (const k of page.keys) await env.GALLERY_KV.delete(k.name);
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
-  // Meta
+  // Meta + read-receipt counter
   await env.GALLERY_KV.delete(kvKeyForGallery(gid));
+  await env.GALLERY_KV.delete(kvKeyForViewed(gid));
 
   await bumpStats(env, {
     r2_bytes: -bytesRemoved,

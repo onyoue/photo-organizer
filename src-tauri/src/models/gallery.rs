@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::core::gallery_client::ViewedRecord;
 use crate::models::settings::Decision;
 
 /// Local record of one photo inside a created gallery. Lets the desktop
@@ -51,5 +52,11 @@ pub struct GalleryRecord {
     /// ISO-8601 timestamp of the last successful feedback fetch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_fetched_at: Option<String>,
+    /// Cached read-receipt from the Worker. `None` either when the model
+    /// hasn't opened the gallery yet or when this record predates the
+    /// view-tracking feature; the dialog tells the user "未閲覧" in both
+    /// cases. Refreshed during `fetch_gallery_feedback`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_views: Option<ViewedRecord>,
 }
 

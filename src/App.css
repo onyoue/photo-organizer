@@ -495,6 +495,20 @@ html,
   padding: 4px 6px;
 }
 
+.gallery-views {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.gv-seen {
+  color: #1d6f42;
+  font-weight: 600;
+}
+
+.gv-unseen {
+  color: #888;
+}
+
 .gallery-feedback-summary {
   display: flex;
   flex-wrap: wrap;
@@ -2440,6 +2454,12 @@ html,
   .gallery-feedback-summary .fb-ok {
     background: #1a3322;
     color: #b0e0b0;
+  }
+  .gv-seen {
+    color: #b6e8b6;
+  }
+  .gv-unseen {
+    color: #b0b0b0;
   }
   .gallery-mismatch {
     background: #3a2a00;

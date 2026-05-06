@@ -14,6 +14,7 @@
  *   PUT    /admin/<gid>/photos/<pid>   upload photo bytes
  *   POST   /admin/<gid>/finalize       mark gallery viewable
  *   GET    /admin/<gid>/feedback       aggregated decisions
+ *   GET    /admin/<gid>/views          read-receipt (first/last view + count)
  *   DELETE /admin/<gid>                delete gallery + photos
  *   GET    /admin/stats                R2 bytes + photo/gallery counts
  *   POST   /admin/stats/recompute      walk KV/R2 to rebuild the counter

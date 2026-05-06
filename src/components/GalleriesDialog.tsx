@@ -335,6 +335,18 @@ export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Pro
                           {g.default_decision === "ng" ? " · 既定NG" : ""}
                         </span>
                       </div>
+                      <div className="gallery-views">
+                        {g.last_views ? (
+                          <span className="gv-seen" title={`初回 ${g.last_views.first_viewed_at}\n最終 ${g.last_views.last_viewed_at}`}>
+                            ✉ 閲覧済み（{formatRelativeTime(g.last_views.last_viewed_at) ?? "不明"}
+                            {g.last_views.view_count > 1 ? ` · ${g.last_views.view_count}回` : ""}）
+                          </span>
+                        ) : (
+                          <span className="gv-unseen" title={fetchedAgo ? `${fetchedAgo}に取り込み時点では未閲覧` : "まだ取り込んでいない"}>
+                            📭 未閲覧
+                          </span>
+                        )}
+                      </div>
                       {summary && (
                         <div className="gallery-feedback-summary">
                           {summary.fav > 0 && (

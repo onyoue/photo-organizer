@@ -54,3 +54,13 @@ export interface StatsTotals {
 export interface StatsResponse extends StatsTotals {
   r2_bytes_limit: number;
 }
+
+/** Per-gallery "read receipt" — set the first time a non-viewOnly
+ *  request hits the gallery HTML, then updated on subsequent views.
+ *  Stored in KV at `viewed:<gid>`. Photographer-side previews via
+ *  `/<gid>/view` do not bump this. */
+export interface ViewedRecord {
+  first_viewed_at: string;
+  last_viewed_at: string;
+  view_count: number;
+}

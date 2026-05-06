@@ -82,6 +82,7 @@ mod tests {
             }],
             last_decisions: Default::default(),
             last_fetched_at: None,
+            last_views: None,
         }
     }
 

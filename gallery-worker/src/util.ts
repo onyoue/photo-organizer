@@ -66,6 +66,10 @@ export function kvPrefixForFeedback(gid: string): string {
   return `feedback:${gid}:`;
 }
 
+export function kvKeyForViewed(gid: string): string {
+  return `viewed:${gid}`;
+}
+
 export const KV_KEY_STATS = "stats:totals";
 
 /** Cloudflare R2 free-tier storage ceiling (10 GB). The Worker echoes this
