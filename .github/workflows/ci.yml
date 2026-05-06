@@ -1,0 +1,72 @@
+name: CI
+
+# Runs the typechecks + test suites on every push to main and on PRs.
+# Three jobs in parallel — they don't share artifacts so a failure in one
+# doesn't block the others' diagnostics. Cache is per-job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel any in-flight run for the same ref when a new push lands —
+# saves runner minutes on quick pushes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (TS + Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+
+  rust:
+    name: Rust backend (cargo test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # Tauri 2 builds the lib without the desktop runtime here, but the
+      # `image`/rawler/openssl-via-rustls crates need a few system libraries
+      # — match what tauri-action installs in the release workflow.
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev
+      - working-directory: src-tauri
+        run: cargo test --quiet
+
+  gallery-worker:
+    name: Gallery worker (TS + Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: gallery-worker/package-lock.json
+      - working-directory: gallery-worker
+        run: npm ci
+      - working-directory: gallery-worker
+        run: npx tsc --noEmit
+      - working-directory: gallery-worker
+        run: npx vitest run
