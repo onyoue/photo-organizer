@@ -167,8 +167,8 @@ body.selecting .tile .badge{display:none}
 .lb{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column}
 .lb[hidden]{display:none}
 .lb .close{position:absolute;top:max(10px,env(safe-area-inset-top));right:10px;width:44px;height:44px;background:rgba(0,0,0,.5);border:0;color:#fff;font-size:24px;border-radius:50%;cursor:pointer;z-index:2}
-.lb-stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y;user-select:none}
-.lb-img{max-width:100%;max-height:100%;object-fit:contain;-webkit-user-drag:none;pointer-events:none}
+.lb-stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;user-select:none}
+.lb-img{max-width:100%;max-height:100%;object-fit:contain;-webkit-user-drag:none;pointer-events:none;transform-origin:center center;transition:transform .08s linear}
 .lb-bottom{padding:10px 14px max(14px,env(safe-area-inset-bottom));background:rgba(0,0,0,.85);border-top:1px solid #222}
 .lb-meta{text-align:center;font-size:12px;color:#aaa;margin-bottom:10px}
 .lb-actions{display:flex;gap:10px}
@@ -415,16 +415,94 @@ document.addEventListener("keydown",e=>{
   else if(!viewOnly&&(e.key==="f"||e.key==="F"))setDecision(photos[cur].pid,"fav");
 });
 
-// swipe
-let tx=0,ty=0,active=false;
+// swipe / pinch-zoom / pan-when-zoomed
+//
+// State machine on the lightbox stage:
+//   1 finger, scale==1  →  swipe-to-navigate
+//   1 finger, scale>1   →  pan the zoomed image
+//   2 fingers           →  pinch to set scale (1×–5×)
+//   double-tap          →  toggle 1× / 2× at the tap point
+//
+// Native browser pinch is disabled by user-scalable=no in the viewport
+// meta, so all of this lives in JS. transforms are composed as
+// translate(px) scale() — which matters: scale-then-translate has a
+// different fixed point. Reset on every photo navigation.
+let scale=1,offX=0,offY=0;
+let pinch=null;       // {dist,startScale}
+let pan=null;         // {x,y,startX,startY}
+let swipeS=null;      // {x,y}
+let lastTap=0;        // for double-tap detection (timestamp)
+
+function applyTransform(){
+  lbImg.style.transform="translate("+offX+"px,"+offY+"px) scale("+scale+")";
+}
+function resetZoom(){
+  scale=1;offX=0;offY=0;applyTransform();
+}
+function dist(t1,t2){
+  const dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+
+const _origUpdate=updateLightbox;
+updateLightbox=function(){resetZoom();_origUpdate();};
+
 lbStage.addEventListener("touchstart",e=>{
-  if(e.touches.length!==1)return;
-  tx=e.touches[0].clientX;ty=e.touches[0].clientY;active=true;
+  if(e.touches.length>=2){
+    pinch={dist:dist(e.touches[0],e.touches[1]),startScale:scale};
+    pan=null;swipeS=null;
+  }else if(e.touches.length===1){
+    const t=e.touches[0];
+    // Double-tap detection — two taps within 300ms toggles 1× ↔ 2×.
+    const now=Date.now();
+    if(scale<=1.01&&now-lastTap<300){
+      scale=2;offX=0;offY=0;applyTransform();
+      lastTap=0;
+      return;
+    }
+    lastTap=now;
+    if(scale>1.01){
+      pan={x:t.clientX,y:t.clientY,startX:offX,startY:offY};
+      swipeS=null;
+    }else{
+      swipeS={x:t.clientX,y:t.clientY};
+      pan=null;
+    }
+  }
 },{passive:true});
+
+lbStage.addEventListener("touchmove",e=>{
+  if(pinch&&e.touches.length>=2){
+    const d=dist(e.touches[0],e.touches[1]);
+    scale=Math.max(1,Math.min(5,pinch.startScale*(d/pinch.dist)));
+    if(scale<=1.01){offX=0;offY=0;}
+    applyTransform();
+  }else if(pan&&e.touches.length===1){
+    const t=e.touches[0];
+    offX=pan.startX+(t.clientX-pan.x);
+    offY=pan.startY+(t.clientY-pan.y);
+    applyTransform();
+  }
+},{passive:true});
+
 lbStage.addEventListener("touchend",e=>{
-  if(!active)return;active=false;
+  if(pinch){
+    if(e.touches.length<2){
+      pinch=null;
+      if(scale<=1.01){resetZoom();}
+    }
+    return;
+  }
+  if(pan){
+    pan=null;
+    return;
+  }
+  if(!swipeS)return;
+  // While zoomed, single-finger gestures pan rather than navigate.
+  if(scale>1.01){swipeS=null;return;}
   const t=e.changedTouches[0];
-  const dx=t.clientX-tx,dy=t.clientY-ty;
+  const dx=t.clientX-swipeS.x,dy=t.clientY-swipeS.y;
+  swipeS=null;
   if(Math.abs(dx)<40||Math.abs(dx)<Math.abs(dy)*1.2)return;
   if(dx<0&&cur<photos.length-1){cur++;updateLightbox();}
   else if(dx>0&&cur>0){cur--;updateLightbox();}
