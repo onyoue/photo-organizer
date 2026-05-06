@@ -449,7 +449,15 @@ updateLightbox=function(){resetZoom();_origUpdate();};
 
 lbStage.addEventListener("touchstart",e=>{
   if(e.touches.length>=2){
-    pinch={dist:dist(e.touches[0],e.touches[1]),startScale:scale};
+    // Snapshot scale + offset at pinch start so we can re-derive both
+    // proportionally as the gesture proceeds — keeps the content under
+    // the screen center anchored as scale changes.
+    pinch={
+      dist:dist(e.touches[0],e.touches[1]),
+      startScale:scale,
+      startOffX:offX,
+      startOffY:offY,
+    };
     pan=null;swipeS=null;
   }else if(e.touches.length===1){
     const t=e.touches[0];
@@ -476,8 +484,15 @@ lbStage.addEventListener("touchstart",e=>{
 lbStage.addEventListener("touchmove",e=>{
   if(pinch&&e.touches.length>=2){
     const d=dist(e.touches[0],e.touches[1]);
-    scale=Math.max(1,Math.min(5,pinch.startScale*(d/pinch.dist)));
-    if(scale<=1.01){offX=0;offY=0;}
+    const newScale=Math.max(1,Math.min(5,pinch.startScale*(d/pinch.dist)));
+    // Anchor the screen-center content: offset must shrink at the same
+    // ratio that scale shrinks. Without this the translate stays at its
+    // pre-pinch value and the zoom-out looks like it's drifting toward
+    // an off-center crop.
+    const ratio=newScale/pinch.startScale;
+    offX=pinch.startOffX*ratio;
+    offY=pinch.startOffY*ratio;
+    scale=newScale;
     applyTransform();
   }else if(pan&&e.touches.length===1){
     const t=e.touches[0];
@@ -491,6 +506,9 @@ lbStage.addEventListener("touchend",e=>{
   if(pinch){
     if(e.touches.length<2){
       pinch=null;
+      // Snap to a perfectly centered 1× when the gesture ends near the
+      // lower bound — the proportional-offset path can leave a tiny
+      // residual when zoom-out starts from a panned state.
       if(scale<=1.01){resetZoom();}
     }
     return;
