@@ -30,11 +30,21 @@ jobs:
           # unset — we hit a transient where cache restoration left the
           # tree without `vitest` even though npm ci reported success.
           node-version: "22"
-      - run: npm ci
+      # Wipe + npm install (rather than `npm ci`) to dodge the known npm
+      # bug where `npm ci` occasionally drops packages from node_modules
+      # mid-install — the symptom we saw was `npm ci` returning 0 yet
+      # vitest's package directory missing on disk.
+      - run: |
+          rm -rf node_modules
+          npm install --no-audit --no-fund --include=dev
       # Diagnostic: surface the actual install state up front so a future
       # similar regression is easy to spot in the run log.
       - run: |
-          test -f node_modules/vitest/package.json || (echo "::error::vitest not installed by npm ci" && exit 1)
+          if [ ! -f node_modules/vitest/package.json ]; then
+            echo "::error::vitest not installed; node_modules/vitest is missing"
+            ls node_modules | head -40
+            exit 1
+          fi
       - run: npx tsc --noEmit
       - run: npx vitest run
 
@@ -71,10 +81,16 @@ jobs:
         with:
           node-version: "22"
       - working-directory: gallery-worker
-        run: npm ci
+        run: |
+          rm -rf node_modules
+          npm install --no-audit --no-fund --include=dev
       - working-directory: gallery-worker
         run: |
-          test -f node_modules/vitest/package.json || (echo "::error::vitest not installed by npm ci" && exit 1)
+          if [ ! -f node_modules/vitest/package.json ]; then
+            echo "::error::vitest not installed; node_modules/vitest is missing"
+            ls node_modules | head -40
+            exit 1
+          fi
       - working-directory: gallery-worker
         run: npx tsc --noEmit
       - working-directory: gallery-worker
