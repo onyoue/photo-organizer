@@ -229,10 +229,10 @@ export function DetailPanel({
           title={
             multi
               ? "1バンドル選択時のみ"
-              : "現像済みJPGをクリップボードにコピー（Discord・Slack・X web composer 等にペースト可能）"
+              : "現像済みJPGをクリップボードにコピー（Ctrl+C でも可。Discord・Slack・X web composer 等にペースト可能）"
           }
         >
-          📋 Copy
+          📋 Clipboard
         </button>
       </div>
 

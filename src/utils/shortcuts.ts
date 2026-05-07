@@ -37,6 +37,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Shift + Delete", description: "Trash current preview variant only" },
       { keys: "M", description: "Move to folder…" },
       { keys: "C", description: "Copy to folder…" },
+      { keys: "Ctrl/Cmd + C", description: "Copy image to clipboard" },
       { keys: "O", description: "Open JPG in default app" },
       { keys: "R", description: "Open RAW in configured developer" },
       { keys: "Shift + R", description: "Cycle active RAW developer" },

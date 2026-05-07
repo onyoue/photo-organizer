@@ -1274,6 +1274,17 @@ function App() {
         selectAll();
         return;
       }
+      if (mod && (e.key === "c" || e.key === "C")) {
+        // Ctrl/Cmd+C anywhere in the app (outside form fields, which the
+        // isInput check above already excluded) copies the active bundle's
+        // developed JPG to the OS clipboard. Mirrors the 📋 Clipboard
+        // button on the DetailPanel; works in 100%/full preview mode too.
+        if (activeBundle && index) {
+          e.preventDefault();
+          void copyActiveBundleImageToClipboard();
+        }
+        return;
+      }
       if (mod || e.altKey) return;
 
       switch (e.key) {
