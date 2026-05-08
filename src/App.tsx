@@ -6,6 +6,7 @@ import { ask, open } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { BundleRef, BundleSummary, FolderIndex } from "./types/bundle";
 import type { ThumbMap, ThumbnailReadyEvent, ThumbnailRequest } from "./types/thumb";
+import type { ExifSummary } from "./types/exif";
 import type { PixelOffset, PreviewMode } from "./types/preview";
 import type { BundleSidecar, PostRecord } from "./types/sidecar";
 import type { AppSettings } from "./types/settings";
@@ -66,6 +67,12 @@ function App() {
   const [activeSidecar, setActiveSidecar] = useState<BundleSidecar | null>(null);
   const [sidecarLoading, setSidecarLoading] = useState(false);
   const [addingPost, setAddingPost] = useState(false);
+
+  // Bundle-level EXIF summary shown in the DetailPanel. Read on bundle
+  // change rather than per-variant — capture-side EXIF (shutter / aperture /
+  // ISO etc.) is identical across the variants of one shutter press, so
+  // re-reading on every up/down keypress would just churn for no gain.
+  const [activeExif, setActiveExif] = useState<ExifSummary | null>(null);
 
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [filterTag, setFilterTag] = useState<string | null>(null);
@@ -567,6 +574,41 @@ function App() {
         if (!cancelled) setSidecarLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBundle, index]);
+
+  // EXIF fetch: try JPG first (cheap read, always has EXIF for OOC files),
+  // then RAW (authoritative original capture tags — works for TIFF-based
+  // RAWs like ORF/CR2/NEF/ARW; CR3 will fail and fall through), then the
+  // developed JPG as last resort. We pass the whole priority list down so
+  // when an export-stripped developed JPG yields nothing the backend can
+  // fall through to the RAW in a single IPC roundtrip.
+  useEffect(() => {
+    if (!activeBundle || !index) {
+      setActiveExif(null);
+      return;
+    }
+    const order: ("jpeg" | "raw" | "developed")[] = ["jpeg", "raw", "developed"];
+    const candidates = order.flatMap((role) =>
+      activeBundle.files.filter((f) => f.role === role).map((f) => f.path),
+    );
+    if (candidates.length === 0) {
+      setActiveExif(null);
+      return;
+    }
+    let cancelled = false;
+    setActiveExif(null);
+    void invoke<ExifSummary | null>("read_image_exif", {
+      paths: candidates.map((p) => joinPath(index.folder_path, p)),
+    })
+      .then((result) => {
+        if (!cancelled) setActiveExif(result);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveExif(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -1636,6 +1678,7 @@ function App() {
                 !appSettings.gallery?.admin_token?.trim() ||
                 selectedIds.size === 0
               }
+              exif={activeExif}
             />
           </aside>
         </div>

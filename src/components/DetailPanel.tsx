@@ -1,4 +1,5 @@
 import type { BundleSummary } from "../types/bundle";
+import type { ExifSummary } from "../types/exif";
 import type { BundleSidecar, Flag, PostRecord } from "../types/sidecar";
 import { formatSize } from "../utils/format";
 import { PostsSection } from "./PostsSection";
@@ -85,6 +86,27 @@ interface Props {
   onSelectPreview: (path: string) => void;
   /** Trash a single JPG/Developed variant (with confirmation). */
   onTrashVariant: (path: string) => void;
+
+  /** Camera-side EXIF for the active bundle, or null while loading / when
+   *  the source file has no parseable EXIF (e.g. CR3 RAW only). */
+  exif: ExifSummary | null;
+}
+
+function ExifBlock({ exif }: { exif: ExifSummary }) {
+  const exposureBits = [exif.focal_length, exif.aperture, exif.shutter, exif.iso].filter(
+    (b): b is string => !!b,
+  );
+  const cameraLine = [exif.camera, exif.lens].filter((b): b is string => !!b).join(" · ");
+  if (!cameraLine && exposureBits.length === 0 && !exif.taken_at) return null;
+  return (
+    <div className="exif-summary">
+      {cameraLine && <div className="exif-camera">{cameraLine}</div>}
+      {exposureBits.length > 0 && (
+        <div className="exif-exposure">{exposureBits.join("  ")}</div>
+      )}
+      {exif.taken_at && <div className="exif-taken">{exif.taken_at}</div>}
+    </div>
+  );
 }
 
 const RENDERABLE_IMAGE_RE = /\.(jpe?g|png)$/i;
@@ -119,6 +141,7 @@ export function DetailPanel({
   currentPreviewPath,
   onSelectPreview,
   onTrashVariant,
+  exif,
 }: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
@@ -280,6 +303,8 @@ export function DetailPanel({
       </div>
 
       <ModelFeedbackBreakdown feedback={bundle.feedback_by_model} />
+
+      {exif && <ExifBlock exif={exif} />}
 
       <ul className="detail-files">
         {bundle.files.map((f) => {

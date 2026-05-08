@@ -1775,6 +1775,33 @@ html,
   color: #802222;
 }
 
+.exif-summary {
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  border: 1px solid #d6d6d6;
+  border-radius: 4px;
+  background: #fafafa;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.exif-camera {
+  font-weight: 600;
+  color: #333;
+}
+
+.exif-exposure {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: #1a1a1a;
+}
+
+.exif-taken {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #777;
+  font-size: 11px;
+}
+
 .detail-files {
   list-style: none;
   margin: 0;
@@ -2401,6 +2428,19 @@ html,
   }
   .model-feedback-label {
     color: #b0b0b0;
+  }
+  .exif-summary {
+    background: #1a1a1a;
+    border-color: #4a4a4a;
+  }
+  .exif-camera {
+    color: #d8d8d8;
+  }
+  .exif-exposure {
+    color: #e8e8e8;
+  }
+  .exif-taken {
+    color: #999;
   }
   .model-feedback-row.flag-pick {
     background: rgba(192, 138, 0, 0.22);

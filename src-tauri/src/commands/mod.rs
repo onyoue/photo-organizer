@@ -1,3 +1,4 @@
+pub mod exif;
 pub mod fileops;
 pub mod folder;
 pub mod gallery;
