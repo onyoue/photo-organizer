@@ -1081,6 +1081,37 @@ html,
   min-width: 0;
 }
 
+.admin-token-input {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.admin-token-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-token-toggle {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 1;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.admin-token-toggle:hover:not(:disabled) {
+  border-color: #396cd8;
+}
+
+.admin-token-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .settings-hint {
   margin: 4px 0 0;
   font-size: 11px;
@@ -2331,6 +2362,11 @@ html,
   }
   .gallery-row > span {
     color: #aaa;
+  }
+  .admin-token-toggle {
+    background: #1f1f1f;
+    color: #e8e8e8;
+    border-color: #4a4a4a;
   }
   .share-name-input,
   .share-decision-select {

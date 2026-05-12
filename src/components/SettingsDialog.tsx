@@ -35,6 +35,7 @@ export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
     admin_token: initial.gallery?.admin_token ?? "",
     default_decision: initial.gallery?.default_decision ?? "ok",
   });
+  const [showAdminToken, setShowAdminToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function patchGallery(patch: Partial<GallerySettings>) {
@@ -210,14 +211,25 @@ export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
               </label>
               <label className="gallery-row">
                 <span>Admin token</span>
-                <input
-                  type="password"
-                  value={gallery.admin_token ?? ""}
-                  onChange={(e) => patchGallery({ admin_token: e.target.value })}
-                  placeholder="(matches the Worker's ADMIN_TOKEN secret)"
-                  disabled={busy}
-                  autoComplete="off"
-                />
+                <span className="admin-token-input">
+                  <input
+                    type={showAdminToken ? "text" : "password"}
+                    value={gallery.admin_token ?? ""}
+                    onChange={(e) => patchGallery({ admin_token: e.target.value })}
+                    placeholder="(matches the Worker's ADMIN_TOKEN secret)"
+                    disabled={busy}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="admin-token-toggle"
+                    onClick={() => setShowAdminToken((v) => !v)}
+                    disabled={busy}
+                    title={showAdminToken ? "Hide token" : "Show token"}
+                  >
+                    {showAdminToken ? "🙈" : "👁"}
+                  </button>
+                </span>
               </label>
               <label className="gallery-row">
                 <span>Default decision</span>
