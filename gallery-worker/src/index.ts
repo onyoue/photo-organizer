@@ -9,7 +9,8 @@
  * Routes:
  *   GET    /                           liveness probe
  *
- *   --- admin (Bearer ADMIN_TOKEN) ----------------------------------
+ *   --- admin (Bearer ADMIN_TOKEN, or Basic auth in a browser) -------
+ *   GET    /admin/                     HTML index of every gallery
  *   PUT    /admin/<gid>                create gallery (JSON body)
  *   PUT    /admin/<gid>/photos/<pid>   upload photo bytes
  *   POST   /admin/<gid>/finalize       mark gallery viewable
@@ -45,9 +46,18 @@ export default {
     const segs = path.split("/").filter(Boolean);
 
     if (segs[0] === "admin") {
-      const provided = req.headers.get("Authorization");
-      if (provided !== `Bearer ${env.ADMIN_TOKEN}`) {
-        return text("Unauthorized", 401);
+      if (!isAdminAuthorized(req, env)) {
+        // Send WWW-Authenticate so a browser landing on /admin/ shows the
+        // native Basic-auth dialog. The desktop app keeps using Bearer
+        // tokens and never sees this dialog — its 401 response stays an
+        // ordinary "Unauthorized" body.
+        return new Response("Unauthorized", {
+          status: 401,
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "WWW-Authenticate": 'Basic realm="cullback-admin", charset="UTF-8"',
+          },
+        });
       }
       return handleAdmin(req, env, segs);
     }
@@ -55,5 +65,27 @@ export default {
     return handlePublic(req, env, segs);
   },
 } satisfies ExportedHandler<Env>;
+
+/// Accepts either the desktop app's Bearer token *or* a browser-issued
+/// Basic-auth credential whose password matches ADMIN_TOKEN. Username on
+/// the Basic side is ignored — browsers force the user to enter one even
+/// though we only care about the token, so we just take whatever they
+/// supply and validate the password half.
+function isAdminAuthorized(req: Request, env: Env): boolean {
+  const provided = req.headers.get("Authorization") ?? "";
+  if (provided === `Bearer ${env.ADMIN_TOKEN}`) return true;
+  if (provided.startsWith("Basic ")) {
+    try {
+      const decoded = atob(provided.slice("Basic ".length));
+      const colon = decoded.indexOf(":");
+      if (colon < 0) return false;
+      const pass = decoded.slice(colon + 1);
+      return pass === env.ADMIN_TOKEN;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
 
 export type { Env };

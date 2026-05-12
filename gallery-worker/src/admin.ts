@@ -26,6 +26,7 @@ import {
   text,
 } from "./util";
 import { crc32 } from "./zip";
+import { renderAdminIndex, type AdminGalleryRow } from "./admin-html";
 
 const MAX_PHOTOS = 500;
 const MAX_PHOTO_BYTES = 25 * 1024 * 1024; // per-file upload limit
@@ -37,7 +38,13 @@ export async function handleAdmin(
 ): Promise<Response> {
   // segs[0] === "admin"
   const sub = segs[1];
-  if (!sub) return notFound();
+
+  // /admin or /admin/ (no GID): HTML index of every gallery for the
+  // photographer's browser. Auth happens upstream in index.ts.
+  if (!sub) {
+    if (req.method === "GET") return getAdminIndexPage(env);
+    return notFound();
+  }
 
   // Stats endpoints live under /admin/stats — handle before the GID
   // regex so "stats" doesn't get rejected as a malformed ULID.
@@ -261,6 +268,43 @@ async function deleteGallery(env: Env, gid: string): Promise<Response> {
   });
 
   return json({ gid, deleted: true });
+}
+
+// ---------- admin HTML index -----------------------------------------------
+
+/// Walk every `gallery:*` KV entry and render an HTML table for the
+/// photographer's browser. Each row links to /<gid>/view (read-only)
+/// rather than /<gid> so opening one for self-preview doesn't bump the
+/// model's view-count counter.
+async function getAdminIndexPage(env: Env): Promise<Response> {
+  const rows: AdminGalleryRow[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await env.GALLERY_KV.list({ prefix: "gallery:", cursor });
+    for (const k of page.keys) {
+      const raw = await env.GALLERY_KV.get(k.name);
+      if (!raw) continue;
+      try {
+        const meta = JSON.parse(raw) as GalleryMeta;
+        rows.push({ gid: k.name.slice("gallery:".length), meta });
+      } catch {
+        // Malformed record — skip rather than 500 the whole page.
+      }
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+
+  // Newest first; ISO-8601 sorts lexically so localeCompare is enough.
+  rows.sort((a, b) => b.meta.created_at.localeCompare(a.meta.created_at));
+
+  const html = renderAdminIndex(rows);
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
 }
 
 // ---------- stats -----------------------------------------------------------
