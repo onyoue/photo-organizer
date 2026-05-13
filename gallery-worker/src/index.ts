@@ -34,6 +34,15 @@ import { handlePublic } from "./public";
 import type { Env } from "./types";
 import { text } from "./util";
 
+/** Browser session: after a successful Basic-auth login we set this cookie
+ *  so subsequent /admin/* requests skip the auth dialog entirely. Scoped
+ *  to /admin so it never rides along on public /<gid>/view requests, and
+ *  marked HttpOnly+Secure+SameSite=Lax so it stays out of JS / cross-site
+ *  contexts. Some browsers (Safari especially) don't reliably persist
+ *  Basic-auth credentials, so without this every tab/restart re-prompts. */
+const SESSION_COOKIE_NAME = "cullback_admin";
+const SESSION_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 30; // 30 days
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -46,7 +55,8 @@ export default {
     const segs = path.split("/").filter(Boolean);
 
     if (segs[0] === "admin") {
-      if (!isAdminAuthorized(req, env)) {
+      const method = authenticateAdmin(req, env);
+      if (method === null) {
         // Send WWW-Authenticate so a browser landing on /admin/ shows the
         // native Basic-auth dialog. The desktop app keeps using Bearer
         // tokens and never sees this dialog — its 401 response stays an
@@ -59,33 +69,77 @@ export default {
           },
         });
       }
-      return handleAdmin(req, env, segs);
+      const response = await handleAdmin(req, env, segs);
+      // Promote a fresh Basic-auth login to a cookie session. Bearer
+      // (desktop app) and cookie (returning browser) responses pass
+      // through unchanged.
+      if (method === "basic") return attachSessionCookie(response, env);
+      return response;
     }
 
     return handlePublic(req, env, segs);
   },
 } satisfies ExportedHandler<Env>;
 
-/// Accepts either the desktop app's Bearer token *or* a browser-issued
-/// Basic-auth credential whose password matches ADMIN_TOKEN. Username on
-/// the Basic side is ignored — browsers force the user to enter one even
-/// though we only care about the token, so we just take whatever they
-/// supply and validate the password half.
-function isAdminAuthorized(req: Request, env: Env): boolean {
+type AuthMethod = "bearer" | "basic" | "cookie";
+
+/// Accepts the desktop app's Bearer token, a browser-issued Basic-auth
+/// credential whose password matches ADMIN_TOKEN, or a returning-browser
+/// session cookie holding ADMIN_TOKEN. Returns which method succeeded so
+/// the fetch handler can promote Basic logins to a cookie.
+///
+/// Basic-auth note: username is ignored. Browsers force the user to type
+/// one even though only the password (=token) matters here.
+function authenticateAdmin(req: Request, env: Env): AuthMethod | null {
   const provided = req.headers.get("Authorization") ?? "";
-  if (provided === `Bearer ${env.ADMIN_TOKEN}`) return true;
+  if (provided === `Bearer ${env.ADMIN_TOKEN}`) return "bearer";
   if (provided.startsWith("Basic ")) {
     try {
       const decoded = atob(provided.slice("Basic ".length));
       const colon = decoded.indexOf(":");
-      if (colon < 0) return false;
-      const pass = decoded.slice(colon + 1);
-      return pass === env.ADMIN_TOKEN;
+      if (colon >= 0) {
+        const pass = decoded.slice(colon + 1);
+        if (pass === env.ADMIN_TOKEN) return "basic";
+      }
     } catch {
-      return false;
+      // fall through to cookie attempt
     }
   }
-  return false;
+  if (readSessionCookie(req) === env.ADMIN_TOKEN) return "cookie";
+  return null;
+}
+
+function readSessionCookie(req: Request): string | null {
+  const raw = req.headers.get("Cookie") ?? "";
+  for (const part of raw.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    const key = part.slice(0, eq).trim();
+    if (key === SESSION_COOKIE_NAME) return part.slice(eq + 1).trim();
+  }
+  return null;
+}
+
+function attachSessionCookie(res: Response, env: Env): Response {
+  // Cookie value is the literal token. HttpOnly keeps it out of JS, Secure
+  // restricts to HTTPS (workers.dev / custom domains both qualify),
+  // SameSite=Lax blocks cross-site sends. Scope to /admin so public photo
+  // requests don't carry the cookie around for no reason.
+  const cookie = [
+    `${SESSION_COOKIE_NAME}=${env.ADMIN_TOKEN}`,
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    "Path=/admin",
+    `Max-Age=${SESSION_COOKIE_MAX_AGE_SEC}`,
+  ].join("; ");
+  const headers = new Headers(res.headers);
+  headers.append("Set-Cookie", cookie);
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
 }
 
 export type { Env };
