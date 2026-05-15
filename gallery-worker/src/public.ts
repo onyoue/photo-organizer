@@ -66,7 +66,7 @@ export async function handlePublic(
   }
 
   if (action === "p" && segs[2] && req.method === "GET") {
-    return photoProxy(env, gid, segs[2], meta);
+    return photoProxy(req, env, gid, segs[2], meta);
   }
 
   if (action === "feedback" && req.method === "POST") {
@@ -117,7 +117,16 @@ async function buildManifest(
   };
 }
 
+// Photos uploaded under /<gid>/p/<pid> are immutable — pid is unique per
+// upload and the desktop app never re-puts the same key — so we hand the
+// browser a 7-day cache window with the `immutable` hint so it doesn't
+// even bother revalidating until expiry. `private` keeps Cloudflare's
+// edge cache out of the loop, so an admin-deleted gallery stops serving
+// to anyone whose local cache hasn't seen the photo yet.
+const PHOTO_CACHE_CONTROL = "private, max-age=604800, immutable";
+
 async function photoProxy(
+  req: Request,
   env: Env,
   gid: string,
   pid: string,
@@ -126,16 +135,42 @@ async function photoProxy(
   if (!PID_RE.test(pid)) return notFound();
   if (!meta.photos.some((p) => p.pid === pid)) return notFound();
 
-  const obj = await env.GALLERY_BUCKET.get(r2KeyForPhoto(gid, pid));
+  const r2Key = r2KeyForPhoto(gid, pid);
+  const ifNoneMatch = req.headers.get("If-None-Match");
+
+  // When the browser revalidates with If-None-Match, push the etag check
+  // down into R2 — if the etag still matches the stored object, R2 hands
+  // us back metadata only (no body bytes streamed) and we turn that into
+  // a 304. Saves both Worker egress and R2 read bytes on the cold-cache
+  // revalidation path.
+  const obj = ifNoneMatch
+    ? await env.GALLERY_BUCKET.get(r2Key, {
+        onlyIf: { etagDoesNotMatch: ifNoneMatch },
+      })
+    : await env.GALLERY_BUCKET.get(r2Key);
   if (!obj) return notFound();
+
+  // R2.get with onlyIf returns R2Object (no body) when the precondition
+  // matches and R2ObjectBody otherwise. TypeScript's narrowing across that
+  // union is fragile, so we just check for `body` and cast.
+  const body = (obj as R2ObjectBody).body;
+  if (!body) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        etag: obj.httpEtag,
+        "cache-control": PHOTO_CACHE_CONTROL,
+      },
+    });
+  }
 
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
   headers.set("etag", obj.httpEtag);
-  headers.set("cache-control", "private, max-age=3600");
+  headers.set("cache-control", PHOTO_CACHE_CONTROL);
   headers.set("x-robots-tag", "noindex");
 
-  return new Response(obj.body, { headers });
+  return new Response(body, { headers });
 }
 
 async function setFeedback(
