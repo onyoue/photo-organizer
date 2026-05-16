@@ -119,11 +119,16 @@ async function buildManifest(
 
 // Photos uploaded under /<gid>/p/<pid> are immutable — pid is unique per
 // upload and the desktop app never re-puts the same key — so we hand the
-// browser a 7-day cache window with the `immutable` hint so it doesn't
-// even bother revalidating until expiry. `private` keeps Cloudflare's
-// edge cache out of the loop, so an admin-deleted gallery stops serving
-// to anyone whose local cache hasn't seen the photo yet.
-const PHOTO_CACHE_CONTROL = "private, max-age=604800, immutable";
+// browser a 7-day cache window. `private` keeps Cloudflare's edge cache
+// out of the loop, so an admin-deleted gallery stops serving to anyone
+// whose local cache hasn't seen the photo yet.
+//
+// `immutable` is intentionally NOT set: with it, browsers skip
+// revalidation entirely within max-age and any first-load failure (mobile
+// network blip, truncated response) sticks as a broken-image-icon cache
+// entry for a week. Without it, the browser may revalidate and we serve
+// 304 cheaply when nothing changed — and refetch fresh when needed.
+const PHOTO_CACHE_CONTROL = "private, max-age=604800";
 
 async function photoProxy(
   req: Request,

@@ -199,6 +199,20 @@ const selBtn=$("selBtn"),selBar=$("selBar"),selCount=$("selCount"),selSave=$("se
 const photos=G.photos,decisions=G.decisions||{},def=G.default_decision;
 const viewOnly=!!G.viewOnly;
 const photoUrl=p=>"/"+G.gid+"/p/"+p.pid;
+
+// Self-heal broken thumbnails: a flaky-network first load can stick as a
+// broken <img> in the browser cache, and loading="lazy" never re-tries on
+// its own. Listen for image errors in capture phase (they don't bubble)
+// and reissue the request once with a cache-busting query so the bad
+// cache entry doesn't ruin the gallery for the rest of the session.
+document.addEventListener("error",function(e){
+  var img=e.target;
+  if(!img||img.tagName!=="IMG")return;
+  if(img.dataset.imgRetried)return;
+  img.dataset.imgRetried="1";
+  var src=img.src,sep=src.indexOf("?")<0?"?":"&";
+  img.src=src+sep+"r="+Date.now();
+},true);
 const fbUrl="/"+G.gid+"/feedback";
 const selectedPids=new Set();
 let selecting=false;
