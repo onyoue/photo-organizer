@@ -7,9 +7,14 @@ interface Props {
   mode: PreviewMode;
   pixelOffset: PixelOffset;
   onPixelOffsetChange: (o: PixelOffset) => void;
+  /** Optional cache-busting suffix appended as `?v=<cacheKey>` to the
+   *  resolved asset URL. Used after an in-place file mutation (e.g.
+   *  lossless rotate) so the browser doesn't keep serving the old
+   *  bytes from its image cache under the same path. */
+  cacheKey?: string;
 }
 
-export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange }: Props) {
+export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange, cacheKey }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState({ w: 0, h: 0 });
   const [container, setContainer] = useState({ w: 0, h: 0 });
@@ -99,7 +104,8 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange }: Pro
     );
   }
 
-  const url = convertFileSrc(src);
+  const baseUrl = convertFileSrc(src);
+  const url = cacheKey ? `${baseUrl}?v=${encodeURIComponent(cacheKey)}` : baseUrl;
   const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     setNatural({
       w: e.currentTarget.naturalWidth,

@@ -41,6 +41,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "O", description: "Open JPG in default app" },
       { keys: "R", description: "Open RAW in configured developer" },
       { keys: "Shift + R", description: "Cycle active RAW developer" },
+      { keys: "[ / ]", description: "Rotate left / right 90° (EXIF only, RAW skipped)" },
     ],
   },
   {

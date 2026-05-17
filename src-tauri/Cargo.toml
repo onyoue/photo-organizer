@@ -25,6 +25,9 @@ thiserror = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff"] }
 webp = "0.3"
 kamadak-exif = "0.6"
+# EXIF *writing* — kamadak-exif is read-only, so we use little_exif to
+# patch the Orientation tag in-place for the lossless rotate feature.
+little_exif = "0.6"
 # Embedded preview extraction from camera RAW files (ARW/CR2/CR3/NEF/DNG/RAF/ORF
 # and many more). We use it only for `Decoder::thumbnail_image` / `preview_image`
 # — fast path that yields the camera-embedded JPEG preview as a DynamicImage,

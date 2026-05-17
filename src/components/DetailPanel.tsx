@@ -90,6 +90,11 @@ interface Props {
   /** Camera-side EXIF for the active bundle, or null while loading / when
    *  the source file has no parseable EXIF (e.g. CR3 RAW only). */
   exif: ExifSummary | null;
+
+  /** Lossless EXIF-orientation rotation of every supported image in the
+   *  bundle. RAW files are skipped (the photographer rotates those in
+   *  their developer). */
+  onRotate: (direction: "cw" | "ccw") => void;
 }
 
 function ExifBlock({ exif }: { exif: ExifSummary }) {
@@ -142,6 +147,7 @@ export function DetailPanel({
   onSelectPreview,
   onTrashVariant,
   exif,
+  onRotate,
 }: Props) {
   if (!bundle) {
     return <div className="detail-panel empty">No bundle selected</div>;
@@ -232,6 +238,22 @@ export function DetailPanel({
           }
         >
           Share…{suffix(selectedCount)}
+        </button>
+        <button
+          type="button"
+          onClick={() => onRotate("ccw")}
+          disabled={busy}
+          title="左に90°回転（EXIF Orientationのみ更新／RAWはスキップ） — ["
+        >
+          ↺
+        </button>
+        <button
+          type="button"
+          onClick={() => onRotate("cw")}
+          disabled={busy}
+          title="右に90°回転（EXIF Orientationのみ更新／RAWはスキップ） — ]"
+        >
+          ↻
         </button>
         <button
           type="button"

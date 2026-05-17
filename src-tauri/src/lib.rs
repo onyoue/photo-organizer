@@ -40,6 +40,7 @@ pub fn run() {
             commands::search::compute_phash_for_image,
             commands::search::search_image_across_folders,
             commands::exif::read_image_exif,
+            commands::orientation::rotate_bundle_orientation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

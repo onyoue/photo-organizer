@@ -2,6 +2,7 @@ pub mod exif;
 pub mod fileops;
 pub mod folder;
 pub mod gallery;
+pub mod orientation;
 pub mod search;
 pub mod settings;
 pub mod sidecar;

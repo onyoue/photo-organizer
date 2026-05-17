@@ -1240,6 +1240,86 @@ function App() {
     }
   }, [index, pickShareableFile]);
 
+  // Lossless rotate via EXIF Orientation. Applies to every selected
+  // bundle's image files; the backend skips RAW (the photographer
+  // rotates those in their developer). Patches mtime/size into the
+  // in-memory index so the thumbnail-cache effect picks up fresh keys
+  // and the PreviewPane re-fetches via the cacheKey query.
+  const rotateSelected = useCallback(
+    async (direction: "cw" | "ccw") => {
+      if (!index || selectedIds.size === 0 || busy) return;
+      const targets = index.bundles.filter((b) => selectedIds.has(b.bundle_id));
+      if (targets.length === 0) return;
+      const files = targets.flatMap((b) => b.files.map((f) => f.path));
+      if (files.length === 0) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const outcomes = await invoke<
+          {
+            path: string;
+            status: "ok" | "skipped" | "error";
+            error: string | null;
+            new_mtime: string | null;
+            new_size: number | null;
+          }[]
+        >("rotate_bundle_orientation", {
+          folder: index.folder_path,
+          files,
+          direction,
+        });
+        const okMap = new Map<string, { mtime: string; size: number }>();
+        let skipped = 0;
+        let errored = 0;
+        for (const o of outcomes) {
+          if (o.status === "ok" && o.new_mtime != null && o.new_size != null) {
+            okMap.set(o.path, { mtime: o.new_mtime, size: o.new_size });
+          } else if (o.status === "skipped") {
+            skipped++;
+          } else if (o.status === "error") {
+            errored++;
+          }
+        }
+        if (okMap.size === 0) {
+          setToast(
+            errored > 0
+              ? `回転失敗 (${errored}件)`
+              : "回転対象なし（RAWのみのバンドルはスキップ）",
+          );
+          return;
+        }
+        // Patch file metadata in place so the thumbnail effect and the
+        // PreviewPane both see fresh mtime as cache-key inputs.
+        setIndex((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            bundles: prev.bundles.map((b) =>
+              selectedIds.has(b.bundle_id)
+                ? {
+                    ...b,
+                    files: b.files.map((f) => {
+                      const upd = okMap.get(f.path);
+                      return upd ? { ...f, mtime: upd.mtime, size: upd.size } : f;
+                    }),
+                  }
+                : b,
+            ),
+          };
+        });
+        const parts: string[] = [`✓ ${okMap.size}ファイル回転`];
+        if (skipped > 0) parts.push(`RAW等スキップ ${skipped}`);
+        if (errored > 0) parts.push(`失敗 ${errored}`);
+        setToast(parts.join(" · "));
+      } catch (e: unknown) {
+        setError(toMessage(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, index, selectedIds],
+  );
+
   const openActive = useCallback(
     async (role: "raw" | "jpeg" | null) => {
       if (!index) return;
@@ -1399,6 +1479,14 @@ function App() {
             void openActive("raw");
           }
           break;
+        case "[":
+          e.preventDefault();
+          void rotateSelected("ccw");
+          break;
+        case "]":
+          e.preventDefault();
+          void rotateSelected("cw");
+          break;
         case "Enter":
           if (activeBundle && !addingPost && !busy) {
             e.preventDefault();
@@ -1440,6 +1528,9 @@ function App() {
     cyclePreviewVariant,
     trashCurrentVariant,
     setRatingForSelection,
+    rotateSelected,
+    copyActiveBundleImageToClipboard,
+    index,
   ]);
 
   const selectedDevelopedCount = useMemo(() => {
@@ -1647,6 +1738,7 @@ function App() {
               mode={previewMode}
               pixelOffset={pixelOffset}
               onPixelOffsetChange={setPixelOffset}
+              cacheKey={currentPreviewVariant?.mtime}
             />
             <DetailPanel
               bundle={activeBundle}
@@ -1679,6 +1771,7 @@ function App() {
                 selectedIds.size === 0
               }
               exif={activeExif}
+              onRotate={(dir) => void rotateSelected(dir)}
             />
           </aside>
         </div>
