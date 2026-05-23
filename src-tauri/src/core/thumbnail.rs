@@ -39,9 +39,14 @@ pub fn thumb_dir(folder: &Path) -> PathBuf {
 }
 
 fn cache_key(file_name: &str, size: u64, mtime: SystemTime) -> String {
-    let mtime_secs = mtime
+    // Nano-second precision matters: an in-place mutation (lossless
+    // rotate) can land within the same wall-clock second as the prior
+    // edit, and with second granularity the cache key would stay
+    // identical — the webview would then keep showing the pre-rotate
+    // thumbnail until something else perturbed the file.
+    let mtime_nanos = mtime
         .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs())
+        .map(|d| d.as_nanos())
         .unwrap_or(0);
     let mut h = DefaultHasher::new();
     // Path-independent: the same file (by name/size/mtime) lands at the same
@@ -50,7 +55,7 @@ fn cache_key(file_name: &str, size: u64, mtime: SystemTime) -> String {
     // moves bundles between folders.
     file_name.hash(&mut h);
     size.hash(&mut h);
-    mtime_secs.hash(&mut h);
+    mtime_nanos.hash(&mut h);
     // Including the long-edge target means tweaking THUMB_LONG_EDGE (this
     // happened when 320 → 800 to fix high-DPI blur) automatically invalidates
     // every cache entry — they get a different hash and re-render lazily.

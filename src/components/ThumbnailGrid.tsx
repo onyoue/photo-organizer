@@ -11,6 +11,11 @@ interface Props {
   selectedIds: ReadonlySet<string>;
   onTileClick: (id: string, e: React.MouseEvent) => void;
   tileSize: number;
+  /** Per-bundle cache-bust stamps. Bumped by the App when a bundle's
+   *  files were mutated in place (lossless rotate). 0/missing means
+   *  the thumbnail URL stays as-is so unaffected bundles don't get
+   *  forced to re-fetch on every rotation. */
+  thumbBust: Map<string, number>;
 }
 
 const COL_GAP = 8;
@@ -25,6 +30,7 @@ export function ThumbnailGrid({
   selectedIds,
   onTileClick,
   tileSize,
+  thumbBust,
 }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -95,6 +101,7 @@ export function ThumbnailGrid({
                   selected={selectedIds.has(b.bundle_id)}
                   size={tileSize}
                   onClick={(e) => onTileClick(b.bundle_id, e)}
+                  bust={thumbBust.get(b.bundle_id) ?? 0}
                 />
               );
             })}

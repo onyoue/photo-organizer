@@ -10,6 +10,12 @@ interface Props {
   selected: boolean;
   size: number;
   onClick: (e: React.MouseEvent) => void;
+  /** Cache-bust stamp bumped by the App after the underlying files
+   *  changed (lossless rotate). Baked into the thumbnail URL so the
+   *  webview re-fetches even when the filesystem mtime / cached webp
+   *  filename couldn't be relied on to advance. 0 means "no bump
+   *  needed" and is omitted from the URL. */
+  bust: number;
 }
 
 function rolesLabel(b: BundleSummary): string {
@@ -32,9 +38,13 @@ const PLATFORM_GLYPH: Record<string, string> = {
   other: "?",
 };
 
-function BundleTileImpl({ bundle, thumb, active, selected, size, onClick }: Props) {
+function BundleTileImpl({ bundle, thumb, active, selected, size, onClick, bust }: Props) {
   const roles = rolesLabel(bundle);
   const className = `tile${active ? " active" : selected ? " selected" : ""}`;
+  const thumbUrl =
+    thumb.kind === "ready"
+      ? convertFileSrc(thumb.path) + (bust > 0 ? `?b=${bust}` : "")
+      : null;
   return (
     <button
       type="button"
@@ -44,8 +54,8 @@ function BundleTileImpl({ bundle, thumb, active, selected, size, onClick }: Prop
       style={{ width: size }}
     >
       <div className="tile-thumb" style={{ height: size }}>
-        {thumb.kind === "ready" && (
-          <img src={convertFileSrc(thumb.path)} alt={bundle.base_name} loading="lazy" />
+        {thumbUrl && (
+          <img src={thumbUrl} alt={bundle.base_name} loading="lazy" />
         )}
         {thumb.kind === "loading" && <div className="tile-spinner" />}
         {thumb.kind === "error" && <div className="tile-status err">!</div>}

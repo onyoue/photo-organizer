@@ -74,6 +74,15 @@ function App() {
   // re-reading on every up/down keypress would just churn for no gain.
   const [activeExif, setActiveExif] = useState<ExifSummary | null>(null);
 
+  // Per-bundle cache-bust stamp updated when a bundle's files change
+  // on disk (lossless rotate). BundleTile bakes it into the thumbnail
+  // URL so the webview re-fetches even when the underlying webp path
+  // is otherwise unchanged. Decoupled from BundleFile.mtime because
+  // filesystem mtime updates can be hidden by Windows write-back
+  // caching or coarse-grained timestamp resolution, which has been
+  // observed to leave the old thumbnail on screen ~1-in-5 rotations.
+  const [thumbBust, setThumbBust] = useState<Map<string, number>>(new Map());
+
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [filterTag, setFilterTag] = useState<string | null>(null);
 
@@ -1271,6 +1280,7 @@ function App() {
         const okMap = new Map<string, { mtime: string; size: number }>();
         let skipped = 0;
         let errored = 0;
+        let firstError: string | null = null;
         for (const o of outcomes) {
           if (o.status === "ok" && o.new_mtime != null && o.new_size != null) {
             okMap.set(o.path, { mtime: o.new_mtime, size: o.new_size });
@@ -1278,14 +1288,16 @@ function App() {
             skipped++;
           } else if (o.status === "error") {
             errored++;
+            if (firstError == null) firstError = `${o.path}: ${o.error ?? "(no detail)"}`;
+            console.error("rotate failed:", o.path, o.error);
           }
         }
         if (okMap.size === 0) {
-          setToast(
-            errored > 0
-              ? `回転失敗 (${errored}件)`
-              : "回転対象なし（RAWのみのバンドルはスキップ）",
-          );
+          if (errored > 0) {
+            setError(`回転失敗 (${errored}件) — ${firstError}`);
+          } else {
+            setToast("回転対象なし（RAWのみのバンドルはスキップ）");
+          }
           return;
         }
         // Patch file metadata in place so the thumbnail effect and the
@@ -1306,6 +1318,15 @@ function App() {
                 : b,
             ),
           };
+        });
+        // Bump the thumbnail cache-bust stamp for every selected bundle
+        // so BundleTile's URL changes even if the filesystem mtime
+        // didn't visibly advance.
+        const stamp = Date.now();
+        setThumbBust((prev) => {
+          const next = new Map(prev);
+          for (const id of selectedIds) next.set(id, stamp);
+          return next;
         });
         const parts: string[] = [`✓ ${okMap.size}ファイル回転`];
         if (skipped > 0) parts.push(`RAW等スキップ ${skipped}`);
@@ -1729,6 +1750,7 @@ function App() {
                 selectedIds={selectedIds}
                 onTileClick={handleTileClick}
                 tileSize={TILE_SIZES[tileLabel]}
+                thumbBust={thumbBust}
               />
             )}
           </div>
