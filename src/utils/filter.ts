@@ -6,6 +6,7 @@ export type FilterMode =
   | "ok"
   | "reject"
   | "unrated"
+  | "rated3orless"
   | "rated4plus"
   | "hasposts"
   | "noposts"
@@ -19,6 +20,10 @@ export const FILTER_LABELS: Record<FilterMode, string> = {
   ok: "✓ OK",
   reject: "✕ NG",
   unrated: "Unrated",
+  // ≤3★ includes unrated by design — the cull-candidate question is
+  // "not a keeper" and an untouched bundle qualifies just like a
+  // 1-star one does. Pair with `rated4plus` to partition the grid.
+  rated3orless: "≤3★",
   rated4plus: "4★+",
   hasposts: "Posted",
   noposts: "Not posted",
@@ -31,6 +36,7 @@ export const FILTER_MODES: FilterMode[] = [
   "ok",
   "reject",
   "unrated",
+  "rated3orless",
   "rated4plus",
   "hasposts",
   "noposts",
@@ -59,6 +65,9 @@ function matchMode(b: BundleSummary, mode: FilterMode): boolean {
     case "unrated":
       // Sidecar doesn't store rating=0, but UI treats 0 as "no rating" too.
       return b.rating === undefined || b.rating === 0;
+    case "rated3orless":
+      // Includes unrated (no rating === ≤3 for the cull-candidate question).
+      return (b.rating ?? 0) <= 3;
     case "rated4plus":
       return (b.rating ?? 0) >= 4;
     case "hasposts":
