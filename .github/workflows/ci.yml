@@ -10,6 +10,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# GitHub's default workflow-token permissions have been tightening; without
+# `contents: read` declared here, actions/checkout has been observed to
+# bail with "could not read Username for 'https://github.com': terminal
+# prompts disabled" because it can't inject the auth header on the runner.
+permissions:
+  contents: read
+
 # Cancel any in-flight run for the same ref when a new push lands —
 # saves runner minutes on quick pushes.
 concurrency:
