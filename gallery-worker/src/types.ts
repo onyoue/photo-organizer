@@ -2,6 +2,13 @@ export interface Env {
   GALLERY_BUCKET: R2Bucket;
   GALLERY_KV: KVNamespace;
   ADMIN_TOKEN: string;
+  // SendGrid + photographer notification email. All three are secrets set
+  // via `wrangler secret put`. When any are missing the /done endpoint
+  // returns 200 without sending — local dev shouldn't have to wire SendGrid
+  // up to render the gallery page.
+  SENDGRID_API_KEY?: string;
+  SENDGRID_FROM?: string;
+  PHOTOGRAPHER_EMAIL?: string;
 }
 
 export type Decision = "ok" | "ng" | "fav";

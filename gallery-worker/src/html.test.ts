@@ -52,6 +52,23 @@ describe("renderGalleryHtml", () => {
     expect(html).toContain('"p1":"ng"');
   });
 
+  it("includes the 確認完了 footer + modal in the model-facing render", () => {
+    const html = renderGalleryHtml(GID, BASE, {});
+    expect(html).toContain('id="doneFooter"');
+    expect(html).toContain('id="doneBtn"');
+    expect(html).toContain('id="doneModal"');
+    expect(html).toContain("確認終了の通知を送りますか？");
+  });
+
+  it("omits the 確認完了 affordances in view-only mode", () => {
+    // Photographer previewing their own gallery shouldn't have a button that
+    // could fire a confirmation email to themselves with no model involved.
+    const html = renderGalleryHtml(GID, BASE, {}, true);
+    expect(html).not.toContain('id="doneFooter"');
+    expect(html).not.toContain('id="doneBtn"');
+    expect(html).not.toContain('id="doneModal"');
+  });
+
   it("strips per-photo content_type/size from the inlined manifest", () => {
     // The client only needs pid + filename; content_type and size live on
     // the R2 object itself. (A generic "image/jpeg" fallback string can

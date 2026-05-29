@@ -73,6 +73,10 @@ export async function handlePublic(
     return setFeedback(req, env, gid, meta);
   }
 
+  if (action === "done" && req.method === "POST") {
+    return notifyDone(env, gid, meta);
+  }
+
   if (action === "zip" && req.method === "GET") {
     const url = new URL(req.url);
     const pidsParam = url.searchParams.get("pids");
@@ -208,6 +212,64 @@ async function setFeedback(
     await env.GALLERY_KV.put(key, body.decision);
   }
   return json({ pid: body.pid, decision: body.decision });
+}
+
+/// Model tapped "確認完了" — fire-and-forget an email to the photographer
+/// via SendGrid. No dedup by design: the user opted to let every tap send,
+/// trusting models not to spam. Missing SendGrid config returns 200 with
+/// {skipped:true} so local dev / preview environments don't 500 just because
+/// the secrets aren't wired up.
+async function notifyDone(
+  env: Env,
+  gid: string,
+  meta: GalleryMeta,
+): Promise<Response> {
+  if (
+    !env.SENDGRID_API_KEY ||
+    !env.SENDGRID_FROM ||
+    !env.PHOTOGRAPHER_EMAIL
+  ) {
+    return json({ ok: true, skipped: true });
+  }
+
+  const subject = `[Cullback] 確認完了: ${meta.name}`;
+  const lines = [
+    `モデルがギャラリー「${meta.name}」の確認完了を通知しました。`,
+    "",
+    `Gallery: ${meta.name}`,
+    `Gallery ID: ${gid}`,
+    `Expires: ${meta.expires_at}`,
+    `Notified at: ${new Date().toISOString()}`,
+  ];
+
+  try {
+    const resp = await fetch("https://api.sendgrid.com/v3/mail/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.SENDGRID_API_KEY}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        personalizations: [
+          { to: [{ email: env.PHOTOGRAPHER_EMAIL }] },
+        ],
+        from: { email: env.SENDGRID_FROM, name: "Cullback" },
+        subject,
+        content: [{ type: "text/plain", value: lines.join("\n") }],
+      }),
+    });
+    if (!resp.ok) {
+      // SendGrid returns 202 on accept; anything else is a real failure.
+      const body = await resp.text().catch(() => "");
+      console.warn(`SendGrid send failed: ${resp.status} ${body}`);
+      return json({ ok: false, status: resp.status }, 502);
+    }
+    return json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`SendGrid send threw: ${msg}`);
+    return json({ ok: false, error: msg }, 502);
+  }
 }
 
 async function galleryHtml(

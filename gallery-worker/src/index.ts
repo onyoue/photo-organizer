@@ -27,6 +27,7 @@
  *   GET    /<gid>/p/<pid>              photo bytes (R2 proxy, expiry-checked)
  *   GET    /<gid>/zip                  ZIP stream of all photos
  *   POST   /<gid>/feedback             record a decision
+ *   POST   /<gid>/done                 model tapped "確認完了" — email photographer via SendGrid
  */
 
 import { handleAdmin } from "./admin";

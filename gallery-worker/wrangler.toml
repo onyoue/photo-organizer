@@ -17,5 +17,14 @@ id = "12b8ba67ba60403c95ddf44ccf1f4c01"
 
 # Set with: wrangler secret put ADMIN_TOKEN
 # (paired with the same value in the photo app's settings)
+#
+# Email notification (model taps 確認完了) goes through SendGrid. All three
+# of these are also `wrangler secret put` secrets — leave them unset on
+# preview/dev to no-op the email send (the /done endpoint returns
+# {ok:true,skipped:true} instead of 500ing):
+#   wrangler secret put SENDGRID_API_KEY    # SG.xxxxx (must allow mail.send)
+#   wrangler secret put SENDGRID_FROM       # verified sender, e.g. noreply@yourdomain
+#   wrangler secret put PHOTOGRAPHER_EMAIL  # where notifications land
 [vars]
-# ADMIN_TOKEN is intentionally NOT a [vars] entry — use `wrangler secret put`.
+# ADMIN_TOKEN / SENDGRID_* / PHOTOGRAPHER_EMAIL are intentionally NOT [vars]
+# entries — use `wrangler secret put`.

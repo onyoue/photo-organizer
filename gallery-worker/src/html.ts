@@ -48,6 +48,28 @@ export function renderGalleryHtml(
       <button class="dec fav" id="decFav">★ FAV</button>
     </div>`;
 
+  // The "確認完了" footer and the end-of-gallery modal are model-only
+  // affordances. In view-only (photographer preview) mode they'd just be
+  // dead UI that could trigger a stray notification if accidentally tapped.
+  const doneFooter = viewOnly
+    ? ""
+    : `<footer id="doneFooter" class="done-footer">
+    <button id="doneBtn" type="button" class="done-btn">確認完了の通知を送る</button>
+    <p class="done-note">最後までご確認いただきありがとうございます。撮影者に通知を送ります。</p>
+  </footer>`;
+  const doneModal = viewOnly
+    ? ""
+    : `<div id="doneModal" class="done-modal" hidden>
+    <div class="done-modal-card">
+      <h2 id="doneModalTitle">これで全部です</h2>
+      <p id="doneModalBody">確認終了の通知を送りますか？</p>
+      <div class="done-modal-actions">
+        <button id="doneModalNo" type="button" class="done-modal-btn secondary">いいえ</button>
+        <button id="doneModalYes" type="button" class="done-modal-btn primary">はい、送る</button>
+      </div>
+    </div>
+  </div>`;
+
   return `<!doctype html>
 <html lang="ja">
 <head>
@@ -70,6 +92,8 @@ ${viewOnlyBanner}
   <div class="hint" id="hint"></div>
 </header>
 <main id="grid" class="grid"></main>
+${doneFooter}
+${doneModal}
 <div id="selBar" class="selbar" hidden>
   <div class="selbar-row selbar-filters">
     <button id="selAll" type="button">全</button>
@@ -187,6 +211,22 @@ body.selecting .tile .badge{display:none}
 .expired{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;color:#888;text-align:center;padding:20px}
 .view-only-banner{position:sticky;top:0;z-index:11;background:#3a2e10;color:#fcd34d;padding:8px 14px;font-size:12px;font-weight:600;text-align:center;border-bottom:1px solid #5a4818}
 body.view-only header{top:32px}
+.done-footer{padding:28px 16px max(28px,env(safe-area-inset-bottom));text-align:center;border-top:1px solid #222;margin-top:8px;background:#0f0f0f}
+.done-btn{display:inline-block;padding:14px 28px;font-size:15px;font-weight:600;color:#fff;background:#0a7d3a;border:0;border-radius:10px;cursor:pointer;min-width:240px}
+.done-btn:active{transform:scale(.98)}
+.done-btn[disabled]{opacity:.45;cursor:default}
+.done-note{margin-top:10px;font-size:11px;color:#777}
+.done-modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.7);padding:24px;backdrop-filter:blur(4px)}
+.done-modal[hidden]{display:none}
+.done-modal-card{background:#1c1c1c;border:1px solid #333;border-radius:14px;padding:22px 20px;max-width:380px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.done-modal-card h2{font-size:18px;font-weight:600;margin-bottom:10px;color:#fff}
+.done-modal-card p{font-size:13px;color:#bbb;margin-bottom:18px;line-height:1.5}
+.done-modal-actions{display:flex;gap:10px}
+.done-modal-btn{flex:1;padding:12px 14px;font-size:14px;font-weight:600;border-radius:8px;border:0;cursor:pointer}
+.done-modal-btn.primary{background:#0a7d3a;color:#fff}
+.done-modal-btn.secondary{background:#2a2a2a;color:#ddd;border:1px solid #3a3a3a}
+.done-modal-btn:active{transform:scale(.98)}
+.done-modal-btn[disabled]{opacity:.55;cursor:default}
 `;
 
 const JS = `(function(){
@@ -369,7 +409,9 @@ function updateLightbox(){
   const p=photos[cur];lbImg.src=photoUrl(p);
   lbMeta.textContent=(cur+1)+" / "+photos.length+(p.filename?(" · "+p.filename):"");
   lbPrev.disabled=cur<=0;
-  lbNext.disabled=cur>=photos.length-1;
+  // Keep next enabled on the last photo for non-view-only mode: tapping it
+  // is one of two ways to surface the "確認完了" modal (the other is swipe).
+  lbNext.disabled=cur>=photos.length-1&&viewOnly;
   paintDec(p.pid);
 }
 function paintDec(pid){
@@ -411,11 +453,97 @@ function post(pid,decision){
 }
 lbClose.addEventListener("click",close);
 lbPrev.addEventListener("click",()=>{if(cur>0){cur--;updateLightbox();}});
-lbNext.addEventListener("click",()=>{if(cur<photos.length-1){cur++;updateLightbox();}});
+// On the last photo the "next" affordance turns into the end-of-gallery
+// prompt. Same intent as the model trying to flick past the final slide.
+lbNext.addEventListener("click",()=>{
+  if(cur<photos.length-1){cur++;updateLightbox();}
+  else if(!viewOnly){showDoneModal();}
+});
 if(!viewOnly){
   decOk.addEventListener("click",()=>setDecision(photos[cur].pid,"ok"));
   decNg.addEventListener("click",()=>setDecision(photos[cur].pid,"ng"));
   decFav.addEventListener("click",()=>setDecision(photos[cur].pid,"fav"));
+}
+
+// ---------- end-of-gallery / 確認完了 ----------
+// Triggered by: (a) tapping the footer button, (b) tapping ›/swiping left
+// on the last lightbox slide. Modal asks for confirmation; "Yes" hits
+// POST /<gid>/done and swaps the page for a thanks screen. The done state
+// lives only in this tab — user opted for "every tap sends" so refreshing
+// re-enables the button intentionally.
+const doneFooter=$("doneFooter"),doneBtn=$("doneBtn");
+const doneModal=$("doneModal"),doneModalYes=$("doneModalYes"),doneModalNo=$("doneModalNo");
+const doneModalTitle=$("doneModalTitle"),doneModalBody=$("doneModalBody");
+// Modal has three states: "ask" (Yes/No), "sending" (buttons disabled),
+// "thanks" (just a close button). One click handler on Yes branches on
+// this — avoids the addEventListener/onclick juggling that would double-fire.
+let doneState="ask";
+function setDoneState(s){
+  doneState=s;
+  if(s==="ask"){
+    doneModalTitle.textContent="これで全部です";
+    doneModalBody.textContent="確認終了の通知を送りますか？";
+    doneModalYes.textContent="はい、送る";
+    doneModalYes.disabled=false;
+    doneModalNo.disabled=false;
+    doneModalNo.style.display="";
+  }else if(s==="sending"){
+    doneModalYes.textContent="送信中…";
+    doneModalYes.disabled=true;
+    doneModalNo.disabled=true;
+  }else if(s==="thanks"){
+    doneModalTitle.textContent="ご確認ありがとうございました！";
+    doneModalBody.textContent="撮影者に通知をお送りしました。";
+    doneModalYes.textContent="閉じる";
+    doneModalYes.disabled=false;
+    doneModalNo.style.display="none";
+  }else if(s==="error"){
+    doneModalBody.textContent="通知の送信に失敗しました。少し時間をおいてもう一度お試しください。";
+    doneModalYes.textContent="もう一度送る";
+    doneModalYes.disabled=false;
+    doneModalNo.disabled=false;
+  }
+}
+function showDoneModal(){
+  if(viewOnly||!doneModal)return;
+  setDoneState("ask");
+  doneModal.hidden=false;
+  document.body.style.overflow="hidden";
+}
+function hideDoneModal(){
+  if(!doneModal)return;
+  doneModal.hidden=true;
+  document.body.style.overflow="";
+}
+async function sendDone(){
+  setDoneState("sending");
+  try{
+    const resp=await fetch("/"+G.gid+"/done",{method:"POST"});
+    if(!resp.ok)throw new Error("status "+resp.status);
+    if(!lb.hidden)close();
+    setDoneState("thanks");
+    // Footer button stays disabled after a successful send — re-tap would
+    // be the model questioning whether it went through; instead the state
+    // is visible and the page refresh re-enables it intentionally.
+    if(doneBtn){doneBtn.disabled=true;doneBtn.textContent="通知を送りました";}
+  }catch(e){
+    setDoneState("error");
+  }
+}
+if(!viewOnly&&doneBtn){
+  doneBtn.addEventListener("click",showDoneModal);
+}
+if(!viewOnly&&doneModal){
+  doneModalYes.addEventListener("click",()=>{
+    if(doneState==="ask"||doneState==="error")sendDone();
+    else if(doneState==="thanks")hideDoneModal();
+  });
+  doneModalNo.addEventListener("click",hideDoneModal);
+  // Tap outside the card to dismiss — only when in question/error state.
+  doneModal.addEventListener("click",(e)=>{
+    if(e.target!==doneModal)return;
+    if(doneState==="ask"||doneState==="error")hideDoneModal();
+  });
 }
 
 // keyboard (desktop convenience)
@@ -539,6 +667,7 @@ lbStage.addEventListener("touchend",e=>{
   swipeS=null;
   if(Math.abs(dx)<40||Math.abs(dx)<Math.abs(dy)*1.2)return;
   if(dx<0&&cur<photos.length-1){cur++;updateLightbox();}
+  else if(dx<0&&cur===photos.length-1&&!viewOnly){showDoneModal();}
   else if(dx>0&&cur>0){cur--;updateLightbox();}
 },{passive:true});
 })();
