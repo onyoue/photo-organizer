@@ -25,7 +25,8 @@ import { CheatsheetOverlay } from "./components/CheatsheetOverlay";
 import { ThumbnailGrid } from "./components/ThumbnailGrid";
 import { PreviewPane } from "./components/PreviewPane";
 import { DetailPanel } from "./components/DetailPanel";
-import { joinPath } from "./utils/path";
+import { FolderTreePane } from "./components/FolderTreePane";
+import { isPathWithin, joinPath, parentPath } from "./utils/path";
 import {
   previewVariants,
   selectThumbnailSource,
@@ -106,6 +107,8 @@ function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [folderTreeVisible, setFolderTreeVisible] = useState(true);
+  const [folderTreeRoot, setFolderTreeRoot] = useState<string | null>(null);
 
   // Auto-dismiss the toast after a few seconds.
   useEffect(() => {
@@ -200,10 +203,19 @@ function App() {
 
   const cycleRawDeveloper = useCallback(async () => {
     const list = appSettings.raw_developers ?? [];
-    if (list.length < 2) return;
+    if (list.length === 0) {
+      setToast("RAW developer が未設定です");
+      return;
+    }
+    if (list.length < 2) {
+      setToast("RAW developer は1件だけです");
+      return;
+    }
     try {
       const updated = await invoke<AppSettings>("cycle_active_raw_developer");
       setAppSettings(updated);
+      const next = updated.raw_developers?.[updated.active_raw_developer_index ?? 0];
+      if (next) setToast(`RAW: ${next.name}`);
     } catch (e: unknown) {
       setError(toMessage(e));
     }
@@ -236,6 +248,10 @@ function App() {
     try {
       const result = await invoke<FolderIndex>("open_folder", { path });
       setIndex(result);
+      setFolderTreeRoot((prev) => {
+        if (prev && isPathWithin(result.folder_path, prev)) return prev;
+        return parentPath(result.folder_path) ?? result.folder_path;
+      });
     } catch (e: unknown) {
       setError(toMessage(e));
     } finally {
@@ -295,6 +311,21 @@ function App() {
       setLoading(false);
     }
   }
+
+  const pickFolderTreeRoot = useCallback(async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: index?.folder_path,
+      });
+      if (!selected || typeof selected !== "string") return;
+      setFolderTreeRoot(selected);
+      await loadFolderByPath(selected);
+    } catch (e: unknown) {
+      setError(toMessage(e));
+    }
+  }, [index?.folder_path, loadFolderByPath]);
 
   useEffect(() => {
     if (!index) return;
@@ -1571,6 +1602,14 @@ function App() {
   return (
     <main className={`app${fullscreenMode ? " fullscreen" : ""}`}>
       <header className="topbar">
+        <button
+          type="button"
+          className={`topbar-icon folder-toggle${folderTreeVisible ? " active" : ""}`}
+          onClick={() => setFolderTreeVisible((visible) => !visible)}
+          title={folderTreeVisible ? "Hide folders" : "Show folders"}
+        >
+          ☰
+        </button>
         <button onClick={pickAndOpenFolder} disabled={loading}>
           {loading ? "Scanning..." : "Open Folder..."}
         </button>
@@ -1693,10 +1732,6 @@ function App() {
         </div>
       )}
 
-      {index && index.bundles.length === 0 && (
-        <div className="empty">No bundles found in this folder.</div>
-      )}
-
       {!index && !error && !loading && (
         <div className="empty">Click "Open Folder..." to scan a directory.</div>
       )}
@@ -1737,10 +1772,22 @@ function App() {
         </div>
       )}
 
-      {index && index.bundles.length > 0 && (
+      {index && (
         <div className="workspace">
+          {folderTreeVisible && folderTreeRoot && (
+            <FolderTreePane
+              rootPath={folderTreeRoot}
+              currentPath={index.folder_path}
+              loading={loading}
+              onOpenFolder={(path) => void loadFolderByPath(path)}
+              onChooseRoot={() => void pickFolderTreeRoot()}
+              onHide={() => setFolderTreeVisible(false)}
+            />
+          )}
           <div className="grid-area">
-            {filteredBundles.length === 0 ? (
+            {index.bundles.length === 0 ? (
+              <div className="empty">No bundles found in this folder.</div>
+            ) : filteredBundles.length === 0 ? (
               <div className="empty">No bundles match the current filter.</div>
             ) : (
               <ThumbnailGrid
@@ -1754,48 +1801,50 @@ function App() {
               />
             )}
           </div>
-          <aside className="sidebar">
-            <PreviewPane
-              src={previewSrc}
-              mode={previewMode}
-              pixelOffset={pixelOffset}
-              onPixelOffsetChange={setPixelOffset}
-              cacheKey={currentPreviewVariant?.mtime}
-            />
-            <DetailPanel
-              bundle={activeBundle}
-              selectedCount={selectedIds.size}
-              selectedDevelopedCount={selectedDevelopedCount}
-              busy={busy}
-              onDelete={deleteSelected}
-              onMove={moveSelected}
-              onCopy={copySelected}
-              onOpen={openActive}
-              sidecar={activeSidecar}
-              sidecarLoading={sidecarLoading}
-              addingPost={addingPost}
-              onStartAddPost={() => setAddingPost(true)}
-              onCancelAddPost={() => setAddingPost(false)}
-              onSavePost={savePost}
-              onDeletePost={deletePost}
-              onOpenUrl={handleOpenUrl}
-              onSetRating={setRatingForSelection}
-              onSetTags={setTagsForActive}
-              currentPreviewPath={currentPreviewVariant?.path ?? null}
-              onSelectPreview={selectPreviewByPath}
-              onTrashVariant={trashVariant}
-              onShare={() => setShowShare(true)}
-              onRevealInFileManager={() => void revealActiveBundleInFileManager()}
-              onCopyImageToClipboard={() => void copyActiveBundleImageToClipboard()}
-              shareDisabled={
-                !appSettings.gallery?.worker_url?.trim() ||
-                !appSettings.gallery?.admin_token?.trim() ||
-                selectedIds.size === 0
-              }
-              exif={activeExif}
-              onRotate={(dir) => void rotateSelected(dir)}
-            />
-          </aside>
+          {index.bundles.length > 0 && (
+            <aside className="sidebar">
+              <PreviewPane
+                src={previewSrc}
+                mode={previewMode}
+                pixelOffset={pixelOffset}
+                onPixelOffsetChange={setPixelOffset}
+                cacheKey={currentPreviewVariant?.mtime}
+              />
+              <DetailPanel
+                bundle={activeBundle}
+                selectedCount={selectedIds.size}
+                selectedDevelopedCount={selectedDevelopedCount}
+                busy={busy}
+                onDelete={deleteSelected}
+                onMove={moveSelected}
+                onCopy={copySelected}
+                onOpen={openActive}
+                sidecar={activeSidecar}
+                sidecarLoading={sidecarLoading}
+                addingPost={addingPost}
+                onStartAddPost={() => setAddingPost(true)}
+                onCancelAddPost={() => setAddingPost(false)}
+                onSavePost={savePost}
+                onDeletePost={deletePost}
+                onOpenUrl={handleOpenUrl}
+                onSetRating={setRatingForSelection}
+                onSetTags={setTagsForActive}
+                currentPreviewPath={currentPreviewVariant?.path ?? null}
+                onSelectPreview={selectPreviewByPath}
+                onTrashVariant={trashVariant}
+                onShare={() => setShowShare(true)}
+                onRevealInFileManager={() => void revealActiveBundleInFileManager()}
+                onCopyImageToClipboard={() => void copyActiveBundleImageToClipboard()}
+                shareDisabled={
+                  !appSettings.gallery?.worker_url?.trim() ||
+                  !appSettings.gallery?.admin_token?.trim() ||
+                  selectedIds.size === 0
+                }
+                exif={activeExif}
+                onRotate={(dir) => void rotateSelected(dir)}
+              />
+            </aside>
+          )}
         </div>
       )}
 

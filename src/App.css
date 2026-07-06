@@ -118,6 +118,12 @@ html,
   border-color: #396cd8;
 }
 
+.topbar-icon.active {
+  background: #e8eef8;
+  border-color: #396cd8;
+  color: #1a4d8c;
+}
+
 /* ---------- Cheatsheet overlay ---------- */
 .cheatsheet-backdrop {
   position: fixed;
@@ -1258,6 +1264,151 @@ html,
   min-height: 0;
 }
 
+.folder-tree-pane {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid #d0d0d0;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.folder-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px 7px 12px;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.folder-tree-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #555;
+}
+
+.folder-tree-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.folder-tree-actions button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #444;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.folder-tree-actions button:hover {
+  border-color: #396cd8;
+}
+
+.folder-tree-list {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.folder-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 26px;
+  padding: 1px 6px 1px calc(8px + var(--depth, 0) * 14px);
+}
+
+.folder-tree-row:hover {
+  background: rgba(57, 108, 216, 0.08);
+}
+
+.folder-tree-row.active {
+  background: #e8eef8;
+}
+
+.folder-tree-expander {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #666;
+  font-size: 11px;
+  line-height: 22px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.folder-tree-expander:hover {
+  background: rgba(57, 108, 216, 0.12);
+  color: #1a4d8c;
+}
+
+.folder-tree-expander.placeholder {
+  cursor: default;
+}
+
+.folder-tree-expander.placeholder:hover {
+  background: transparent;
+}
+
+.folder-tree-name {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #1a1a1a;
+  font-size: 12px;
+  line-height: 22px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.folder-tree-row.active .folder-tree-name {
+  color: #1a4d8c;
+  font-weight: 700;
+}
+
+.folder-tree-name:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.folder-tree-message {
+  margin-left: calc(8px + var(--depth, 0) * 14px + 22px);
+  padding: 4px 6px;
+  color: #888;
+  font-size: 11px;
+}
+
+.folder-tree-message.muted {
+  font-style: italic;
+}
+
+.folder-tree-message.error-message {
+  border: 0;
+  background: transparent;
+  color: #a01515;
+  text-align: left;
+  cursor: pointer;
+}
+
 .grid-area {
   flex: 1;
   display: flex;
@@ -1283,6 +1434,7 @@ html,
 .app.fullscreen .topbar,
 .app.fullscreen .filter-bar,
 .app.fullscreen .statusbar,
+.app.fullscreen .folder-tree-pane,
 .app.fullscreen .grid-area,
 .app.fullscreen .detail-panel {
   display: none;
@@ -2319,6 +2471,7 @@ html,
   }
   .topbar,
   .statusbar,
+  .folder-tree-pane,
   .sidebar {
     background: #2a2a2a;
     border-color: #3a3a3a;
@@ -2332,14 +2485,52 @@ html,
   .sidebar {
     border-left-color: #3a3a3a;
   }
+  .folder-tree-pane {
+    border-right-color: #3a3a3a;
+  }
   .topbar > button,
   .topbar-icon,
+  .folder-tree-actions button,
   .size-selector button,
   .detail-actions button,
   .filter-chip {
     background: #2a2a2a;
     color: #e8e8e8;
     border-color: #4a4a4a;
+  }
+  .topbar-icon.active {
+    background: #243654;
+    border-color: #5a8cd8;
+    color: #d8e8ff;
+  }
+  .folder-tree-header {
+    border-bottom-color: #3a3a3a;
+  }
+  .folder-tree-title,
+  .folder-tree-expander {
+    color: #aaa;
+  }
+  .folder-tree-name {
+    color: #e8e8e8;
+  }
+  .folder-tree-row:hover {
+    background: rgba(120, 160, 230, 0.14);
+  }
+  .folder-tree-row.active {
+    background: #1f3050;
+  }
+  .folder-tree-row.active .folder-tree-name,
+  .folder-tree-expander:hover {
+    color: #8ab4f8;
+  }
+  .folder-tree-expander:hover {
+    background: rgba(120, 160, 230, 0.18);
+  }
+  .folder-tree-message {
+    color: #999;
+  }
+  .folder-tree-message.error-message {
+    color: #ff9a9a;
   }
   .settings-dialog {
     background: #2a2a2a;

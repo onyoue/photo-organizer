@@ -12,6 +12,7 @@ pub fn run() {
         .manage(commands::gallery::ShareCancelFlag::default())
         .invoke_handler(tauri::generate_handler![
             commands::folder::open_folder,
+            commands::folder::list_child_folders,
             commands::thumbnail::ensure_thumbnail,
             commands::thumbnail::ensure_preview_image_path,
             commands::thumbnail::generate_thumbnails,
