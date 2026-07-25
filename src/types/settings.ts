@@ -21,5 +21,10 @@ export interface AppSettings {
   welcome_seen?: boolean;
   /** Last-used cross-folder image-search root, remembered across launches. */
   search_root?: string;
+  /** Root of the folder tree pane, remembered across launches. */
+  folder_tree_root?: string;
+  /** Folder open at last exit. Restored as the tree's highlighted row only —
+   *  reopening it (scan + thumbnails) stays an explicit click. */
+  last_folder?: string;
 }
 

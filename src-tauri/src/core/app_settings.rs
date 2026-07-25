@@ -69,10 +69,9 @@ mod tests {
                 },
             ],
             active_raw_developer_index: 1,
-            raw_developer_path: None,
-            gallery: Default::default(),
-            welcome_seen: false,
-            search_root: None,
+            // Rest defaulted — this test is about the developer list, and
+            // spelling out every field just breaks on the next one added.
+            ..Default::default()
         };
         write(&dir, &s).unwrap();
         let loaded = read(&dir);
@@ -80,6 +79,41 @@ mod tests {
         assert_eq!(loaded.raw_developers[1].name, "MyDevApp");
         assert_eq!(loaded.active_raw_developer_index, 1);
         assert_eq!(loaded.active_raw_developer().unwrap().path, "D:\\my-dev.exe");
+    }
+
+    #[test]
+    fn folder_tree_state_round_trips_via_disk() {
+        // The left pane's root and the folder open in it are restored on the
+        // next launch, so they have to survive the JSON round trip.
+        let dir = tempdir();
+        let s = AppSettings {
+            folder_tree_root: Some("D:\\Photos".into()),
+            last_folder: Some("D:\\Photos\\2026-07-25 shibuya".into()),
+            ..Default::default()
+        };
+        write(&dir, &s).unwrap();
+
+        let loaded = read(&dir);
+        assert_eq!(loaded.folder_tree_root.as_deref(), Some("D:\\Photos"));
+        assert_eq!(
+            loaded.last_folder.as_deref(),
+            Some("D:\\Photos\\2026-07-25 shibuya"),
+        );
+    }
+
+    #[test]
+    fn folder_tree_state_absent_on_a_fresh_install() {
+        // Both fields are skip_serializing_if=None, so a settings.json written
+        // before this feature existed must still load with them empty rather
+        // than failing to parse.
+        let dir = tempdir();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(settings_path(&dir), r#"{"welcome_seen": true}"#).unwrap();
+
+        let loaded = read(&dir);
+        assert!(loaded.folder_tree_root.is_none());
+        assert!(loaded.last_folder.is_none());
+        assert!(loaded.welcome_seen);
     }
 
     #[test]
@@ -186,10 +220,7 @@ mod tests {
                 path: "x".into(),
             }],
             active_raw_developer_index: 5,
-            raw_developer_path: None,
-            gallery: Default::default(),
-            welcome_seen: false,
-            search_root: None,
+            ..Default::default()
         };
         assert!(s.active_raw_developer().is_none());
     }

@@ -28,6 +28,33 @@ pub async fn save_app_settings(app: AppHandle, settings: AppSettings) -> AppResu
         .expect("settings save task panicked")
 }
 
+/// Persist the folder tree pane's root and the folder currently open in it.
+///
+/// Read-modify-write against settings.json rather than taking a whole
+/// `AppSettings` like `save_app_settings` does: this fires on every folder
+/// navigation, and round-tripping the full struct through the frontend would
+/// let a stale in-memory snapshot silently revert unrelated fields. Returns
+/// the updated settings so the frontend can keep its copy honest.
+///
+/// `None` clears the corresponding field.
+#[tauri::command]
+pub async fn save_folder_tree_state(
+    app: AppHandle,
+    root: Option<String>,
+    last_folder: Option<String>,
+) -> AppResult<AppSettings> {
+    let dir = app_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<AppSettings> {
+        let mut settings = app_settings::read(&dir);
+        settings.folder_tree_root = root;
+        settings.last_folder = last_folder;
+        app_settings::write(&dir, &settings)?;
+        Ok(settings)
+    })
+    .await
+    .expect("folder tree state save task panicked")
+}
+
 /// Open one or more files in the active RAW developer. Falls back to the OS
 /// default handler when no developer is configured, so the feature degrades
 /// gracefully on a fresh install.

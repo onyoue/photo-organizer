@@ -89,6 +89,19 @@ pub struct AppSettings {
     /// is in one place and gets searched repeatedly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search_root: Option<String>,
+
+    /// Root of the left-hand folder tree pane, remembered between launches so
+    /// the photographer lands back in their library instead of re-navigating
+    /// from scratch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_tree_root: Option<String>,
+
+    /// Folder that was open when the app last exited. Restored *only* as the
+    /// tree pane's revealed/highlighted row — the scan and thumbnail pass
+    /// stay behind an explicit click, so startup doesn't pay for a folder the
+    /// photographer may not want this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_folder: Option<String>,
 }
 
 impl AppSettings {

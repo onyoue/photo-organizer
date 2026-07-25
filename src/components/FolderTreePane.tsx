@@ -16,7 +16,13 @@ import {
 
 interface FolderTreePaneProps {
   rootPath: string;
+  /** Folder whose contents are currently displayed. Its row is marked active
+   *  and is not clickable — there's nothing to re-open. */
   currentPath: string | null;
+  /** Folder to expand to and mark as pending: remembered from the last
+   *  session but not opened. Unlike `currentPath` its row stays clickable,
+   *  which is the whole point — clicking is what loads it. */
+  revealPath?: string | null;
   loading: boolean;
   onOpenFolder: (path: string) => void;
   onChooseRoot: () => void;
@@ -32,6 +38,7 @@ interface NodeState {
 export function FolderTreePane({
   rootPath,
   currentPath,
+  revealPath = null,
   loading,
   onOpenFolder,
   onChooseRoot,
@@ -78,16 +85,19 @@ export function FolderTreePane({
     void loadChildren(rootPath);
   }, [loadChildren, rootPath]);
 
+  // Expand down to whichever folder we're pointing at — the open one, or the
+  // one restored from the last session when nothing is open yet.
+  const target = currentPath ?? revealPath;
   useEffect(() => {
-    if (!currentPath || !isPathWithin(currentPath, rootPath)) return;
-    const chain = ancestorPaths(rootPath, currentPath);
+    if (!target || !isPathWithin(target, rootPath)) return;
+    const chain = ancestorPaths(rootPath, target);
     setExpanded((prev) => {
       const next = new Set(prev);
       for (const path of chain) next.add(path);
       return next;
     });
     for (const path of chain) void loadChildren(path);
-  }, [currentPath, loadChildren, rootPath]);
+  }, [target, loadChildren, rootPath]);
 
   const toggle = useCallback(
     (path: string) => {
@@ -109,13 +119,17 @@ export function FolderTreePane({
     const node = nodes[entry.path];
     const isExpanded = expanded.has(entry.path);
     const isActive = currentPath ? isSamePath(entry.path, currentPath) : false;
+    const isPending =
+      !isActive && !!revealPath && isSamePath(entry.path, revealPath);
     const canExpand = entry.has_children || entry.path === rootPath;
     const children = node?.children ?? [];
 
     return (
       <div className="folder-tree-node" key={entry.path}>
         <div
-          className={`folder-tree-row${isActive ? " active" : ""}`}
+          className={`folder-tree-row${isActive ? " active" : ""}${
+            isPending ? " pending" : ""
+          }`}
           style={{ "--depth": depth } as CSSProperties}
         >
           {canExpand ? (
@@ -138,7 +152,9 @@ export function FolderTreePane({
               if (!isActive) onOpenFolder(entry.path);
             }}
             disabled={loading && !isActive}
-            title={entry.path}
+            title={
+              isPending ? `${entry.path}\n（前回開いていたフォルダ）` : entry.path
+            }
           >
             {entry.name || pathLabel(entry.path)}
           </button>

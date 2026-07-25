@@ -90,7 +90,12 @@ export function SettingsDialog({ initial, onSave, onClose, busy }: Props) {
         path: d.path,
       }));
 
+    // Spread `initial` first so fields this dialog doesn't manage survive the
+    // save. Without it, saving here dropped welcome_seen / search_root (and
+    // now the folder-tree state) back to undefined — the welcome overlay
+    // would reappear on next launch.
     const next: AppSettings = {
+      ...initial,
       raw_developers: cleaned,
       active_raw_developer_index: clampActive(cleaned, active),
       gallery: {

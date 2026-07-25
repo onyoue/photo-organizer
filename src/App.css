@@ -1337,6 +1337,16 @@ html,
   background: #e8eef8;
 }
 
+/* Restored from the last session but not opened yet. Reads as "this is where
+   you were" without claiming to be loaded — dashed outline instead of the
+   solid fill `active` uses, since it's still waiting on a click. */
+.folder-tree-row.pending {
+  background: rgba(57, 108, 216, 0.05);
+  outline: 1px dashed rgba(57, 108, 216, 0.45);
+  outline-offset: -1px;
+  border-radius: 3px;
+}
+
 .folder-tree-expander {
   flex: 0 0 20px;
   width: 20px;
@@ -1383,6 +1393,10 @@ html,
 .folder-tree-row.active .folder-tree-name {
   color: #1a4d8c;
   font-weight: 700;
+}
+
+.folder-tree-row.pending .folder-tree-name {
+  color: #1a4d8c;
 }
 
 .folder-tree-name:disabled {
@@ -2519,7 +2533,12 @@ html,
   .folder-tree-row.active {
     background: #1f3050;
   }
+  .folder-tree-row.pending {
+    background: rgba(120, 160, 230, 0.09);
+    outline-color: rgba(138, 180, 248, 0.5);
+  }
   .folder-tree-row.active .folder-tree-name,
+  .folder-tree-row.pending .folder-tree-name,
   .folder-tree-expander:hover {
     color: #8ab4f8;
   }

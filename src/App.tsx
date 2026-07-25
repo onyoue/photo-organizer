@@ -109,6 +109,12 @@ function App() {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [folderTreeVisible, setFolderTreeVisible] = useState(true);
   const [folderTreeRoot, setFolderTreeRoot] = useState<string | null>(null);
+  // Folder restored from the previous session, shown as the tree's highlighted
+  // row until the user actually opens something. Deliberately *not* scanned at
+  // startup — the pane is cheap (one list_child_folders per expanded level),
+  // a folder scan plus thumbnail pass is not.
+  const [restoredFolder, setRestoredFolder] = useState<string | null>(null);
+  const treePaneShown = folderTreeVisible && !!folderTreeRoot;
 
   // Auto-dismiss the toast after a few seconds.
   useEffect(() => {
@@ -174,6 +180,57 @@ function App() {
     };
   }, []);
 
+  // Mirror of folderTreeRoot, written eagerly alongside the state so
+  // callbacks can read the *current* root without taking it as a dependency.
+  // loadFolderByPath is one such caller — it feeds the drag-drop listener,
+  // which shouldn't re-register every time the tree root changes — and
+  // pickFolderTreeRoot sets the root and calls it in the same tick, before
+  // any re-render could refresh a state-derived closure.
+  const folderTreeRootRef = useRef<string | null>(null);
+  const updateFolderTreeRoot = useCallback((root: string | null) => {
+    folderTreeRootRef.current = root;
+    setFolderTreeRoot(root);
+  }, []);
+
+  /// Persist the tree pane's root and the folder open in it. Fire-and-forget:
+  /// a lost write costs one re-navigation next launch, which isn't worth
+  /// blocking a folder open on or surfacing an error for. The command returns
+  /// the merged settings so our in-memory copy stays honest — the settings
+  /// dialog saves the whole struct back and would otherwise revert these.
+  const persistFolderTreeState = useCallback(
+    (root: string | null, lastFolder: string | null) => {
+      void invoke<AppSettings>("save_folder_tree_state", {
+        root,
+        lastFolder,
+      })
+        .then(setAppSettings)
+        .catch(() => {});
+    },
+    [],
+  );
+
+  /// Restore the tree pane from the previous session, without opening
+  /// anything. The root is probed with list_child_folders first: a remembered
+  /// path can be gone (deleted folder, unmounted card reader) and a tree
+  /// rooted at a dead path would render nothing but an error row, so dropping
+  /// it silently is the better failure. The remembered folder becomes the
+  /// highlighted row only — no scan, no thumbnails, until the user clicks it.
+  const restoreFolderTree = useCallback(
+    async (s: AppSettings) => {
+      const root = s.folder_tree_root;
+      if (!root) return;
+      try {
+        await invoke("list_child_folders", { path: root });
+      } catch {
+        return;
+      }
+      updateFolderTreeRoot(root);
+      const last = s.last_folder;
+      if (last && isPathWithin(last, root)) setRestoredFolder(last);
+    },
+    [updateFolderTreeRoot],
+  );
+
   // Load app-wide settings on mount.
   useEffect(() => {
     void invoke<AppSettings>("get_app_settings").then((s) => {
@@ -181,8 +238,9 @@ function App() {
       // First launch (or pre-`welcome_seen` install) → show the welcome
       // overlay once. The user dismissing it persists `welcome_seen: true`.
       if (!s.welcome_seen) setShowWelcome(true);
+      void restoreFolderTree(s);
     });
-  }, []);
+  }, [restoreFolderTree]);
 
   const dismissWelcome = useCallback(async () => {
     setShowWelcome(false);
@@ -248,16 +306,22 @@ function App() {
     try {
       const result = await invoke<FolderIndex>("open_folder", { path });
       setIndex(result);
-      setFolderTreeRoot((prev) => {
-        if (prev && isPathWithin(result.folder_path, prev)) return prev;
-        return parentPath(result.folder_path) ?? result.folder_path;
-      });
+      // A real folder is open now — index.folder_path takes over as the tree's
+      // current row, so the restored placeholder has done its job.
+      setRestoredFolder(null);
+      const prev = folderTreeRootRef.current;
+      const nextRoot =
+        prev && isPathWithin(result.folder_path, prev)
+          ? prev
+          : parentPath(result.folder_path) ?? result.folder_path;
+      updateFolderTreeRoot(nextRoot);
+      persistFolderTreeState(nextRoot, result.folder_path);
     } catch (e: unknown) {
       setError(toMessage(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [persistFolderTreeState, updateFolderTreeRoot]);
 
   // OS-level drag-drop into the window. The backend's open_folder tolerates
   // file paths (falls back to the parent dir), so dropping either a folder
@@ -320,12 +384,15 @@ function App() {
         defaultPath: index?.folder_path,
       });
       if (!selected || typeof selected !== "string") return;
-      setFolderTreeRoot(selected);
+      // Eager ref write matters here: loadFolderByPath reads the root back on
+      // the same tick to decide whether to keep it, and a plain setState
+      // wouldn't have landed yet.
+      updateFolderTreeRoot(selected);
       await loadFolderByPath(selected);
     } catch (e: unknown) {
       setError(toMessage(e));
     }
-  }, [index?.folder_path, loadFolderByPath]);
+  }, [index?.folder_path, loadFolderByPath, updateFolderTreeRoot]);
 
   useEffect(() => {
     if (!index) return;
@@ -1732,7 +1799,10 @@ function App() {
         </div>
       )}
 
-      {!index && !error && !loading && (
+      {/* Fresh install / no remembered root: nothing to navigate with yet, so
+          the only way in is the Open Folder button. Once the tree pane is up
+          it carries its own hint inside the workspace instead. */}
+      {!index && !error && !loading && !treePaneShown && (
         <div className="empty">Click "Open Folder..." to scan a directory.</div>
       )}
 
@@ -1772,12 +1842,16 @@ function App() {
         </div>
       )}
 
-      {index && (
+      {/* Rendered when a folder is open *or* when the tree pane was restored
+          from the last session — in the latter case the photographer gets
+          their navigation back without anything being scanned yet. */}
+      {(index || treePaneShown) && (
         <div className="workspace">
-          {folderTreeVisible && folderTreeRoot && (
+          {treePaneShown && folderTreeRoot && (
             <FolderTreePane
               rootPath={folderTreeRoot}
-              currentPath={index.folder_path}
+              currentPath={index?.folder_path ?? null}
+              revealPath={index ? null : restoredFolder}
               loading={loading}
               onOpenFolder={(path) => void loadFolderByPath(path)}
               onChooseRoot={() => void pickFolderTreeRoot()}
@@ -1785,7 +1859,13 @@ function App() {
             />
           )}
           <div className="grid-area">
-            {index.bundles.length === 0 ? (
+            {!index ? (
+              <div className="empty">
+                {restoredFolder
+                  ? "前回開いていたフォルダをツリーで選択しています。クリックすると読み込みます。"
+                  : "左のツリーからフォルダを選ぶと読み込みます。"}
+              </div>
+            ) : index.bundles.length === 0 ? (
               <div className="empty">No bundles found in this folder.</div>
             ) : filteredBundles.length === 0 ? (
               <div className="empty">No bundles match the current filter.</div>
@@ -1801,7 +1881,7 @@ function App() {
               />
             )}
           </div>
-          {index.bundles.length > 0 && (
+          {index && index.bundles.length > 0 && (
             <aside className="sidebar">
               <PreviewPane
                 src={previewSrc}
