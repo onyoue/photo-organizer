@@ -19,6 +19,7 @@
  *   DELETE /admin/<gid>                delete gallery + photos
  *   GET    /admin/stats                R2 bytes + photo/gallery counts
  *   POST   /admin/stats/recompute      walk KV/R2 to rebuild the counter
+ *   POST   /admin/sweep                purge expired galleries now (same as cron)
  *
  *   --- public ------------------------------------------------------
  *   GET    /<gid>                      mobile gallery HTML (full)
@@ -28,9 +29,12 @@
  *   GET    /<gid>/zip                  ZIP stream of all photos
  *   POST   /<gid>/feedback             record a decision
  *   POST   /<gid>/done                 model tapped "確認完了" — email photographer via SendGrid
+ *
+ *   --- cron --------------------------------------------------------
+ *   scheduled                          daily sweep of expired galleries
  */
 
-import { handleAdmin } from "./admin";
+import { handleAdmin, sweepExpiredGalleries } from "./admin";
 import { handlePublic } from "./public";
 import type { Env } from "./types";
 import { text } from "./util";
@@ -79,6 +83,24 @@ export default {
     }
 
     return handlePublic(req, env, segs);
+  },
+
+  /// Daily expiry sweep (cron schedule lives in wrangler.toml).
+  ///
+  /// The fetch handler only gates expired galleries behind a 410 — their
+  /// photos stay in R2 and keep counting against the 10 GB free tier until
+  /// something deletes them. This is that something.
+  ///
+  /// Logged rather than surfaced anywhere: `wrangler tail` shows the summary,
+  /// and the same result JSON is available on demand via POST /admin/sweep.
+  async scheduled(_controller, env, _ctx): Promise<void> {
+    const r = await sweepExpiredGalleries(env);
+    console.log(
+      `sweep: scanned=${r.scanned} swept=${r.swept.length} ` +
+        `reclaimed=${r.bytes_reclaimed}B deferred=${r.skipped_for_budget} ` +
+        `failed=${r.failed.length}`,
+    );
+    for (const f of r.failed) console.error(`sweep failed ${f.gid}: ${f.error}`);
   },
 } satisfies ExportedHandler<Env>;
 

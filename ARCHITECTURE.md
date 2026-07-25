@@ -181,10 +181,13 @@ src-tauri/src/
 ```
 gallery-worker/src/
 ├── index.ts        # ルーター: /admin/* は Bearer 認証、それ以外は公開
+│                   # + scheduled ハンドラ（日次の期限切れスイープ）
 ├── admin.ts        # 写真家用エンドポイント (PUT/POST /admin/<gid>...)
+│                   # + purgeGallery / sweepExpiredGalleries
 ├── public.ts       # 公開エンドポイント (GET /<gid>, /<gid>/zip, POST /feedback)
 ├── html.ts         # モバイルレビュー HTML を1つの文字列で返す（CSS/JS インライン）
 ├── zip.ts          # STORE-method ZIP ストリーム生成（Worker CPU 制約対策）
+├── sweep.ts        # スイープ対象の判定（純粋関数。猶予期間とKV削除予算）
 ├── types.ts        # GalleryMeta, FeedbackResponse, StatsTotals
 └── util.ts         # KV/R2 キーヘルパー、json/text レスポンスヘルパー
 ```
@@ -192,6 +195,11 @@ gallery-worker/src/
 詳細は [gallery-worker/CLOUDFLARE.md](./gallery-worker/CLOUDFLARE.md)。
 何故その設計なのかは特に「ZIP の STORE 方式」と「stats:totals の incremental 集計」が
 読みどころ。
+
+**期限切れの扱いに注意:** `expires_at` を過ぎても公開ルートが 410 を返すだけで、
+R2 のバイトは解放されません。実際に消すのは cron の `scheduled` →
+`sweepExpiredGalleries` だけ（あとは手動の `DELETE /admin/<gid>`）。
+つまり期限は「アクセス制御」であって「保存期間」ではありません。
 
 ---
 
@@ -272,6 +280,7 @@ gallery-worker/src/
 | 新しい画像形式に対応したい | `core/scanner.rs` の拡張子分類 + `core/thumbnail.rs` のデコーダ |
 | 投稿先プラットフォームを追加 | `models/sidecar.rs::Platform` 列挙、UI の `BundleTile` のグリフマップ |
 | ギャラリーに新エンドポイント追加 | `gallery-worker/src/admin.ts` or `public.ts` + `core/gallery_client.rs` の対応メソッド + `commands/gallery.rs` のラッパ |
+| 期限切れの猶予期間・削除ペースを変える | `gallery-worker/src/sweep.ts` の `SWEEP_GRACE_DAYS` / `SWEEP_KV_DELETE_BUDGET`、頻度は `wrangler.toml` の `crons` |
 | サイドカーに新フィールド追加 | `models/sidecar.rs::BundleSidecar` + 必要なら `models/bundle.rs::BundleSummary` への射影、scanner.rs での読み出し、TS 側 `types/sidecar.ts` も同期 |
 | 新しいフィルタモード | `utils/filter.ts::FilterMode` + `matchMode` |
 | 新しいキーボードショートカット | `utils/shortcuts.ts` + App.tsx の handler |

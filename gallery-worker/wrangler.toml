@@ -2,6 +2,15 @@ name = "cullback"
 main = "src/index.ts"
 compatibility_date = "2026-04-01"
 
+# Daily expiry sweep. Passing `expires_at` only makes the public routes
+# return 410 — the photos stay in R2 and keep counting against the 10 GB
+# free tier — so without this trigger storage grows forever and only manual
+# deletes reclaim it. 18:17 UTC = 03:17 JST; the odd minute avoids the
+# top-of-hour scheduling crowd. Grace period and per-run budget are in
+# src/sweep.ts.
+[triggers]
+crons = ["17 18 * * *"]
+
 # R2 bucket — created originally as `photo-gallery`. Bucket names are
 # account-internal (never appear in public URLs), so renaming would
 # require copying every existing photo across to a new bucket. Left as-is.

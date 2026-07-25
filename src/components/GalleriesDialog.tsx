@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -31,6 +31,16 @@ export interface ApplyResult {
 // any real-world lifetime (≈ 100 years out). Display them as 期限なし
 // rather than literally "あと 36500 日" which is correct but useless.
 const NO_EXPIRY_DAYS_THRESHOLD = 365 * 5;
+
+/// True when this gallery's link has gone dead. An unparseable timestamp
+/// counts as *not* expired on purpose — the bulk button offers irreversible
+/// deletion, and a record we can't reason about shouldn't be swept up in it.
+/// The Worker's cron sweep skips malformed timestamps for the same reason.
+function isExpiredGallery(expires_at: string): boolean {
+  const t = Date.parse(expires_at);
+  if (Number.isNaN(t)) return false;
+  return t <= Date.now();
+}
 
 function relativeExpiry(expires_at: string): string {
   const now = Date.now();
@@ -96,6 +106,11 @@ export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Pro
   function selectAll(value: boolean) {
     setSelected(value ? new Set(galleries.map((g) => g.gid)) : new Set());
   }
+
+  const expiredGids = useMemo(
+    () => galleries.filter((g) => isExpiredGallery(g.expires_at)).map((g) => g.gid),
+    [galleries],
+  );
 
   useEffect(() => {
     refresh();
@@ -208,14 +223,13 @@ export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Pro
     }
   }
 
-  async function deleteSelected() {
-    if (busy || selected.size === 0) return;
-    const gids = [...selected];
-    const yes = await ask(
-      `Delete ${gids.length} galleries?\n\n`
-        + `Removes the links, all uploaded photos, and any model feedback. This cannot be undone.`,
-      { title: "Delete galleries", kind: "warning" },
-    );
+  /// Shared body for the two bulk-delete buttons. `delete_galleries_bulk`
+  /// reports failures per-gid instead of aborting, and the Rust client treats
+  /// a Worker 404 as success — so a gallery the cron sweep already purged
+  /// still gets its stale local record cleaned up here.
+  async function runBulkDelete(gids: string[], confirm: { title: string; message: string }) {
+    if (busy || gids.length === 0) return;
+    const yes = await ask(confirm.message, { title: confirm.title, kind: "warning" });
     if (!yes) return;
     setBusy("__bulk__");
     setError(null);
@@ -240,6 +254,29 @@ export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Pro
     } finally {
       setBusy(null);
     }
+  }
+
+  async function deleteSelected() {
+    const gids = [...selected];
+    await runBulkDelete(gids, {
+      title: "Delete galleries",
+      message:
+        `Delete ${gids.length} galleries?\n\n`
+        + `Removes the links, all uploaded photos, and any model feedback. This cannot be undone.`,
+    });
+  }
+
+  /// Manual counterpart to the Worker's daily sweep. The cron leaves a grace
+  /// period after expiry before purging; this reclaims the space now, and is
+  /// the way to act on an R2 quota warning without waiting a day.
+  async function deleteExpired() {
+    await runBulkDelete(expiredGids, {
+      title: "期限切れギャラリーを削除",
+      message:
+        `期限切れの ${expiredGids.length} 件を削除しますか？\n\n`
+        + `R2 上の写真・モデルのフィードバック・共有リンクがすべて消えます。取り消せません。\n`
+        + `フィードバックを取り込んでいないギャラリーがある場合は、先に取り込んでください。`,
+    });
   }
 
   return (
@@ -297,6 +334,21 @@ export function GalleriesDialog({ currentFolder, onClose, onApplyFeedback }: Pro
                   title="Delete all selected galleries"
                 >
                   選択を削除
+                </button>
+                <button
+                  type="button"
+                  className="gallery-delete"
+                  onClick={deleteExpired}
+                  disabled={!!busy || expiredGids.length === 0}
+                  title={
+                    expiredGids.length === 0
+                      ? "期限切れのギャラリーはありません"
+                      : "期限切れギャラリーを今すぐ削除して R2 の容量を空ける"
+                      + "（Worker の日次スイープを待たずに実行）"
+                  }
+                >
+                  期限切れを削除
+                  {expiredGids.length > 0 ? ` (${expiredGids.length})` : ""}
                 </button>
               </div>
               <ul className="gallery-list">

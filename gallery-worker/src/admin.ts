@@ -27,6 +27,7 @@ import {
 } from "./util";
 import { crc32 } from "./zip";
 import { renderAdminIndex, type AdminGalleryRow } from "./admin-html";
+import { planSweep, type SweepResult } from "./sweep";
 
 const MAX_PHOTOS = 500;
 const MAX_PHOTO_BYTES = 25 * 1024 * 1024; // per-file upload limit
@@ -52,6 +53,15 @@ export async function handleAdmin(
     const action = segs[2];
     if (!action && req.method === "GET") return getStats(env);
     if (action === "recompute" && req.method === "POST") return recomputeStats(env);
+    return notFound();
+  }
+
+  // Manual trigger for the same sweep the cron runs. Same reason as
+  // /admin/stats — matched before the GID regex.
+  if (sub === "sweep") {
+    if (!segs[2] && req.method === "POST") {
+      return json(await sweepExpiredGalleries(env));
+    }
     return notFound();
   }
 
@@ -228,7 +238,19 @@ async function getFeedback(env: Env, gid: string): Promise<Response> {
 async function deleteGallery(env: Env, gid: string): Promise<Response> {
   const meta = await loadMeta(env, gid);
   if (!meta) return notFound();
+  await purgeGallery(env, gid, meta);
+  return json({ gid, deleted: true });
+}
 
+/// Delete everything belonging to one gallery — R2 photos, feedback keys,
+/// meta, read-receipt — and decrement the stats counter. Returns the bytes
+/// reclaimed. Shared by DELETE /admin/<gid> and the expiry sweep so the two
+/// paths can never drift on what "deleted" means.
+async function purgeGallery(
+  env: Env,
+  gid: string,
+  meta: GalleryMeta,
+): Promise<number> {
   // Sum bytes-to-decrement BEFORE delete. PhotoEntry.size is set by the
   // desktop client at create time — fall back to R2 head if missing.
   let bytesRemoved = 0;
@@ -267,7 +289,55 @@ async function deleteGallery(env: Env, gid: string): Promise<Response> {
     gallery_count: -1,
   });
 
-  return json({ gid, deleted: true });
+  return bytesRemoved;
+}
+
+// ---------- expiry sweep ----------------------------------------------------
+
+/// Purge galleries whose expiry (plus grace) has passed. Driven by the daily
+/// cron trigger in wrangler.toml and by POST /admin/sweep.
+///
+/// Expiry on its own only makes the public routes return 410 — the R2 bytes
+/// stay billable until something deletes them, which is what this does.
+/// Failures are collected per-gid rather than aborting: one gallery with a
+/// corrupt record shouldn't stop the rest of the run from reclaiming space.
+export async function sweepExpiredGalleries(
+  env: Env,
+  now: number = Date.now(),
+): Promise<SweepResult> {
+  const all = await listGalleryMetas(env);
+  const plan = planSweep(
+    all.map(({ gid, meta }) => ({
+      gid,
+      expires_at: meta.expires_at,
+      photo_count: meta.photos.length,
+    })),
+    now,
+  );
+
+  const metaByGid = new Map(all.map((e) => [e.gid, e.meta]));
+  const swept: string[] = [];
+  const failed: { gid: string; error: string }[] = [];
+  let bytes_reclaimed = 0;
+
+  for (const gid of plan.targets) {
+    const meta = metaByGid.get(gid);
+    if (!meta) continue;
+    try {
+      bytes_reclaimed += await purgeGallery(env, gid, meta);
+      swept.push(gid);
+    } catch (e) {
+      failed.push({ gid, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return {
+    scanned: all.length,
+    swept,
+    failed,
+    skipped_for_budget: plan.skipped_for_budget,
+    bytes_reclaimed,
+  };
 }
 
 // ---------- admin HTML index -----------------------------------------------
@@ -277,22 +347,7 @@ async function deleteGallery(env: Env, gid: string): Promise<Response> {
 /// rather than /<gid> so opening one for self-preview doesn't bump the
 /// model's view-count counter.
 async function getAdminIndexPage(env: Env): Promise<Response> {
-  const rows: AdminGalleryRow[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await env.GALLERY_KV.list({ prefix: "gallery:", cursor });
-    for (const k of page.keys) {
-      const raw = await env.GALLERY_KV.get(k.name);
-      if (!raw) continue;
-      try {
-        const meta = JSON.parse(raw) as GalleryMeta;
-        rows.push({ gid: k.name.slice("gallery:".length), meta });
-      } catch {
-        // Malformed record — skip rather than 500 the whole page.
-      }
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
+  const rows: AdminGalleryRow[] = await listGalleryMetas(env);
 
   // Newest first; ISO-8601 sorts lexically so localeCompare is enough.
   rows.sort((a, b) => b.meta.created_at.localeCompare(a.meta.created_at));
@@ -326,35 +381,20 @@ async function recomputeStats(env: Env): Promise<Response> {
   let r2_bytes = 0;
   let photo_count = 0;
   let gallery_count = 0;
-  let cursor: string | undefined;
-  do {
-    const page = await env.GALLERY_KV.list({ prefix: "gallery:", cursor });
-    for (const k of page.keys) {
-      const raw = await env.GALLERY_KV.get(k.name);
-      if (!raw) continue;
-      let meta: GalleryMeta;
-      try {
-        meta = JSON.parse(raw) as GalleryMeta;
-      } catch {
-        continue;
+  for (const { gid, meta } of await listGalleryMetas(env)) {
+    gallery_count++;
+    for (const p of meta.photos) {
+      if (typeof p.size === "number") {
+        r2_bytes += p.size;
+      } else {
+        // Pre-stats-tracking entry without a recorded size — fall back
+        // to R2 head. Slow but only matters on the first recompute.
+        const obj = await env.GALLERY_BUCKET.head(r2KeyForPhoto(gid, p.pid));
+        if (obj) r2_bytes += obj.size;
       }
-      gallery_count++;
-      for (const p of meta.photos) {
-        if (typeof p.size === "number") {
-          r2_bytes += p.size;
-        } else {
-          // Pre-stats-tracking entry without a recorded size — fall back
-          // to R2 head. Slow but only matters on the first recompute.
-          const obj = await env.GALLERY_BUCKET.head(
-            r2KeyForPhoto(k.name.slice("gallery:".length), p.pid),
-          );
-          if (obj) r2_bytes += obj.size;
-        }
-        photo_count++;
-      }
+      photo_count++;
     }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
+  }
 
   const totals: StatsTotals = {
     r2_bytes,
@@ -419,6 +459,35 @@ async function loadMeta(env: Env, gid: string): Promise<GalleryMeta | null> {
   } catch {
     return null;
   }
+}
+
+const GALLERY_KEY_PREFIX = "gallery:";
+
+/// Walk every `gallery:*` KV record. Malformed entries are skipped rather
+/// than thrown — one bad record shouldn't 500 the admin index, skew a
+/// recompute, or abort a sweep. Shared by all three of those callers.
+async function listGalleryMetas(
+  env: Env,
+): Promise<{ gid: string; meta: GalleryMeta }[]> {
+  const out: { gid: string; meta: GalleryMeta }[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await env.GALLERY_KV.list({ prefix: GALLERY_KEY_PREFIX, cursor });
+    for (const k of page.keys) {
+      const raw = await env.GALLERY_KV.get(k.name);
+      if (!raw) continue;
+      try {
+        out.push({
+          gid: k.name.slice(GALLERY_KEY_PREFIX.length),
+          meta: JSON.parse(raw) as GalleryMeta,
+        });
+      } catch {
+        // Malformed record — skip.
+      }
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return out;
 }
 
 function isValidDefaultDecision(v: unknown): v is DefaultDecision {
