@@ -532,10 +532,6 @@ function App() {
       setPreviewSrc(null);
       return;
     }
-    if (currentPreviewVariant.role !== "raw") {
-      setPreviewSrc(joinPath(index.folder_path, currentPreviewVariant.path));
-      return;
-    }
     // Clear immediately so the pane shows "No preview available" instead
     // of the previous bundle's image while we wait for the async extract.
     // Otherwise the user sees the old photo with the new pixelOffset and

@@ -114,7 +114,7 @@ function ExifBlock({ exif }: { exif: ExifSummary }) {
   );
 }
 
-const RENDERABLE_IMAGE_RE = /\.(jpe?g|png)$/i;
+const RENDERABLE_IMAGE_RE = /\.(jpe?g|png|tiff?)$/i;
 
 function suffix(n: number): string {
   return n > 1 ? ` (${n})` : "";

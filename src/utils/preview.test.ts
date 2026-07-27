@@ -117,16 +117,15 @@ describe("previewVariants", () => {
     expect(previewVariants(b)[0].path).toBe(selectPreviewFile(b));
   });
 
-  it("excludes tiff files even though they share the JPG role bucket", () => {
-    // TIFF gets the developed/jpeg role for organisational purposes, but
-    // webview <img> can't render it — so it shouldn't appear when the user
-    // cycles through preview variants.
+  it("includes tiff files for backend-converted previews", () => {
+    // TIFF gets the developed/jpeg role and is converted before display.
     const b = bundle([
       file("developed", "a_v3.tiff", "2026-03-01T00:00:00Z"),
       file("developed", "a_v2.jpg", "2026-02-01T00:00:00Z"),
       file("developed", "a_v1.png", "2026-01-01T00:00:00Z"),
     ]);
     expect(previewVariants(b).map((f) => f.path)).toEqual([
+      "a_v3.tiff",
       "a_v2.jpg",
       "a_v1.png",
     ]);

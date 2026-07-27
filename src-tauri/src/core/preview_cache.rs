@@ -1,4 +1,4 @@
-//! Browser-renderable preview cache for RAW files.
+//! Browser-renderable preview cache for RAW and TIFF files.
 //!
 //! The webview's <img> tag can't decode camera RAW (CR2/ARW/NEF/ORF/RAF/...).
 //! For the preview pane and 100% zoom view, we extract the camera's embedded
@@ -7,8 +7,8 @@
 //! existing thumbnail cache. The desktop UI then asks for an "ensured"
 //! preview path and feeds whatever comes back to convertFileSrc.
 //!
-//! For non-RAW formats (JPG/PNG/TIFF/etc.) the source path is returned
-//! as-is — those decode natively in the webview, no cache step needed.
+//! TIFF is decoded by the backend and cached as JPEG because webviews do not
+//! render it reliably. Browser-native formats are returned as-is.
 
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
@@ -33,6 +33,15 @@ fn preview_dir(folder: &Path) -> PathBuf {
     folder.join(APP_DIR).join(PREVIEW_SUBDIR)
 }
 
+fn needs_cached_preview(source: &Path) -> bool {
+    thumbnail::is_raw_path(source)
+        || source
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("tif") || ext.eq_ignore_ascii_case("tiff"))
+            .unwrap_or(false)
+}
+
 fn cache_key(file_name: &str, size: u64, mtime: SystemTime) -> String {
     let mtime_secs = mtime
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -46,12 +55,12 @@ fn cache_key(file_name: &str, size: u64, mtime: SystemTime) -> String {
     format!("{:016x}", h.finish())
 }
 
-/// For a non-RAW source, return the source path unchanged. For a RAW source,
-/// extract the embedded preview JPEG, save it to
+/// For a browser-native source, return the source path unchanged. For RAW or
+/// TIFF, decode the image and save a browser-renderable preview to
 /// `<folder>/.photoorg/previews/<hash>.jpg`, and return the cached path.
 /// Subsequent calls hit the cache and return immediately.
 pub fn ensure_preview_path(folder: &Path, source: &Path) -> AppResult<PathBuf> {
-    if !thumbnail::is_raw_path(source) {
+    if !needs_cached_preview(source) {
         return Ok(source.to_path_buf());
     }
 
@@ -70,11 +79,15 @@ pub fn ensure_preview_path(folder: &Path, source: &Path) -> AppResult<PathBuf> {
     }
 
     let oriented = thumbnail::load_oriented_image(source)?;
-    let preview = oriented.resize(
-        PREVIEW_LONG_EDGE,
-        PREVIEW_LONG_EDGE,
-        image::imageops::FilterType::Triangle,
-    );
+    let preview = if oriented.width() > PREVIEW_LONG_EDGE || oriented.height() > PREVIEW_LONG_EDGE {
+        oriented.resize(
+            PREVIEW_LONG_EDGE,
+            PREVIEW_LONG_EDGE,
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        oriented
+    };
     let mut bytes: Vec<u8> = Vec::new();
     let mut cursor = Cursor::new(&mut bytes);
     preview
@@ -89,4 +102,43 @@ pub fn ensure_preview_path(folder: &Path, source: &Path) -> AppResult<PathBuf> {
     fs::write(&tmp, &bytes)?;
     fs::rename(&tmp, &cached)?;
     Ok(cached)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{ImageBuffer, Rgb};
+    use ulid::Ulid;
+
+    fn tempdir_for_test() -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!("photoorg_preview_{}", Ulid::new()));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn converts_tiff_to_cached_jpeg() {
+        let folder = tempdir_for_test();
+        let source = folder.join("sample.TIFF");
+        let image = ImageBuffer::from_pixel(32, 24, Rgb([20_u8, 80_u8, 160_u8]));
+        image.save(&source).unwrap();
+
+        let preview = ensure_preview_path(&folder, &source).unwrap();
+
+        assert_ne!(preview, source);
+        assert_eq!(preview.extension().and_then(|s| s.to_str()), Some("jpg"));
+        assert!(preview.exists());
+        assert_eq!(image::open(&preview).unwrap().width(), 32);
+        assert_eq!(ensure_preview_path(&folder, &source).unwrap(), preview);
+    }
+
+    #[test]
+    fn leaves_browser_native_images_unchanged() {
+        let folder = tempdir_for_test();
+        let source = folder.join("sample.jpg");
+        fs::write(&source, b"contents are not read on the pass-through path").unwrap();
+
+        assert_eq!(ensure_preview_path(&folder, &source).unwrap(), source);
+    }
 }

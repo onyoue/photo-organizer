@@ -1,9 +1,8 @@
 import type { BundleFile, BundleSummary } from "../types/bundle";
 
-/// Extensions Chromium-based webviews render directly via <img>. TIFF lives
-/// in JPG-role bundles for organisation but isn't in this set — webview
-/// would draw a broken-image icon for it.
-const RENDERABLE_IMAGE = /\.(jpe?g|png)$/i;
+/// Formats accepted by the preview pipeline. TIFF is converted to a cached
+/// JPEG by `ensure_preview_image_path` before it reaches the webview.
+const RENDERABLE_IMAGE = /\.(jpe?g|png|tiff?)$/i;
 
 function jpgRoleSorted(b: BundleSummary): {
   developed: BundleFile[];
@@ -22,9 +21,8 @@ function jpgRoleSorted(b: BundleSummary): {
  * All preview-able variants in a bundle, ordered for ↑/↓ cycling. Index 0 is
  * the auto-pick (latest developed → in-camera fallback); subsequent
  * developed variants follow in mtime-descending order, with the in-camera
- * appended last when present. Filters to formats the webview can actually
- * render — TIFFs are bundled but excluded here to spare the user a broken
- * preview icon. RAW-only bundles fall through to the first RAW so the
+ * appended last when present. TIFFs are converted by the backend. RAW-only
+ * bundles fall through to the first RAW so the
  * preview pane can show the camera-embedded JPEG (resolved via the
  * `ensure_preview_image_path` command).
  */
