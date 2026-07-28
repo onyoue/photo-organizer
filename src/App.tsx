@@ -532,11 +532,9 @@ function App() {
       setPreviewSrc(null);
       return;
     }
-    // Clear immediately so the pane shows "No preview available" instead
-    // of the previous bundle's image while we wait for the async extract.
-    // Otherwise the user sees the old photo with the new pixelOffset and
-    // it can read as a misplaced/black tile mid-switch.
-    setPreviewSrc(null);
+    // Keep the current photo visible while the next preview path is being
+    // resolved. PreviewPane also waits for the new image to decode before
+    // replacing it, so rapid navigation never exposes the pane background.
     let cancelled = false;
     void invoke<string>("ensure_preview_image_path", {
       folder: index.folder_path,

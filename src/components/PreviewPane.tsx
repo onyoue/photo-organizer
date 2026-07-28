@@ -19,6 +19,40 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange, cache
   const [natural, setNatural] = useState({ w: 0, h: 0 });
   const [container, setContainer] = useState({ w: 0, h: 0 });
   const dragStart = useRef<{ x: number; y: number; dx: number; dy: number } | null>(null);
+  const requestedUrl = src
+    ? (() => {
+        const baseUrl = convertFileSrc(src);
+        return cacheKey ? `${baseUrl}?v=${encodeURIComponent(cacheKey)}` : baseUrl;
+      })()
+    : null;
+  const [displayedUrl, setDisplayedUrl] = useState<string | null>(requestedUrl);
+
+  // Decode the next photo off-screen and only then replace the currently
+  // displayed one. Changing an <img src> directly can expose the dark pane
+  // for a frame while the webview decodes the new file.
+  useEffect(() => {
+    if (!requestedUrl) {
+      setDisplayedUrl(null);
+      return;
+    }
+    if (requestedUrl === displayedUrl) return;
+
+    let cancelled = false;
+    const next = new Image();
+    next.src = requestedUrl;
+    const commit = () => {
+      if (!cancelled) setDisplayedUrl(requestedUrl);
+    };
+    if (next.complete && next.naturalWidth > 0) {
+      commit();
+    } else {
+      next.onload = commit;
+    }
+    return () => {
+      cancelled = true;
+      next.onload = null;
+    };
+  }, [requestedUrl, displayedUrl]);
 
   useLayoutEffect(() => {
     if (!containerRef.current) return;
@@ -96,7 +130,7 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange, cache
     window.addEventListener("mouseup", onUp);
   }
 
-  if (!src) {
+  if (!displayedUrl) {
     return (
       <div className="preview-pane empty" ref={containerRef}>
         <div className="preview-empty">No preview available</div>
@@ -104,8 +138,6 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange, cache
     );
   }
 
-  const baseUrl = convertFileSrc(src);
-  const url = cacheKey ? `${baseUrl}?v=${encodeURIComponent(cacheKey)}` : baseUrl;
   const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     setNatural({
       w: e.currentTarget.naturalWidth,
@@ -117,7 +149,7 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange, cache
     return (
       <div className="preview-pane fit" ref={containerRef}>
         <img
-          src={url}
+          src={displayedUrl}
           alt=""
           className="preview-img fit"
           onLoad={onImgLoad}
@@ -140,7 +172,7 @@ export function PreviewPane({ src, mode, pixelOffset, onPixelOffsetChange, cache
       onMouseDown={onMouseDown}
     >
       <img
-        src={url}
+        src={displayedUrl}
         alt=""
         className="preview-img full"
         style={{

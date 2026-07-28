@@ -402,11 +402,23 @@ async function downloadSelected(pids){
 
 // ---------- lightbox ----------
 let cur=-1;
+let lightboxLoad=0;
 function open(){lb.hidden=false;document.body.style.overflow="hidden";}
-function close(){lb.hidden=true;document.body.style.overflow="";cur=-1;}
+function close(){lightboxLoad++;lb.hidden=true;document.body.style.overflow="";cur=-1;}
 function openAt(i){cur=i;updateLightbox();open();}
 function updateLightbox(){
-  const p=photos[cur];lbImg.src=photoUrl(p);
+  const p=photos[cur],url=photoUrl(p),load=++lightboxLoad;
+  // Keep the current bitmap on screen until the next one has loaded. Directly
+  // replacing src briefly exposes the black lightbox between photos.
+  const next=new Image();
+  next.onload=()=>{
+    if(load!==lightboxLoad)return;
+    lbImg.src=url;
+    // Warm the adjacent photos so sequential viewing is usually instant.
+    [photos[cur-1],photos[cur+1]].forEach(q=>{if(q){const n=new Image();n.src=photoUrl(q);}});
+  };
+  next.src=url;
+  if(next.complete&&next.naturalWidth>0)next.onload();
   lbMeta.textContent=(cur+1)+" / "+photos.length+(p.filename?(" · "+p.filename):"");
   lbPrev.disabled=cur<=0;
   // Keep next enabled on the last photo for non-view-only mode: tapping it
