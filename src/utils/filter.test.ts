@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BundleSummary } from "../types/bundle";
-import { applyFilter, distinctTags } from "./filter";
+import { applyFilter, distinctTags, type RatingFilter } from "./filter";
 
 let id = 0;
 function bundle(overrides: Partial<BundleSummary> = {}): BundleSummary {
@@ -45,17 +45,43 @@ describe("applyFilter", () => {
       bundle({ rating: 1 }),
       bundle({ rating: 5 }),
     ];
-    expect(applyFilter(bs, "unrated")).toHaveLength(2);
+    expect(applyFilter(bs, "all", null, new Set([0]))).toHaveLength(2);
   });
 
-  it("includes ratings 4 and above for rated4plus", () => {
+  it("filters by an exact rating", () => {
     const bs = [
       bundle({ rating: 3 }),
       bundle({ rating: 4 }),
       bundle({ rating: 5 }),
       bundle(),
     ];
-    expect(applyFilter(bs, "rated4plus")).toHaveLength(2);
+    expect(applyFilter(bs, "all", null, new Set([4]))).toEqual([bs[1]]);
+  });
+
+  it("combines multiple selected ratings with OR", () => {
+    const bs = [
+      bundle({ rating: 1 }),
+      bundle({ rating: 2 }),
+      bundle({ rating: 3 }),
+      bundle({ rating: 4 }),
+      bundle({ rating: 5 }),
+    ];
+    const ratings = new Set<RatingFilter>([1, 3, 5]);
+    expect(applyFilter(bs, "all", null, ratings)).toEqual([
+      bs[0],
+      bs[2],
+      bs[4],
+    ]);
+  });
+
+  it("composes rating with mode and tag filters", () => {
+    const bs = [
+      bundle({ flag: "pick", rating: 4, tags: ["a"] }),
+      bundle({ flag: "pick", rating: 5, tags: ["a"] }),
+      bundle({ flag: "reject", rating: 4, tags: ["a"] }),
+      bundle({ flag: "pick", rating: 4, tags: ["b"] }),
+    ];
+    expect(applyFilter(bs, "pick", "a", new Set([4]))).toEqual([bs[0]]);
   });
 
   it("filters by has-posts", () => {
@@ -88,11 +114,11 @@ describe("applyFilter", () => {
     const a = bundle({ rating: 4, base_name: "A" });
     const b = bundle({ rating: 4, base_name: "B" });
     const c = bundle({ rating: 4, base_name: "C" });
-    expect(applyFilter([a, b, c], "rated4plus").map((x) => x.base_name)).toEqual([
-      "A",
-      "B",
-      "C",
-    ]);
+    expect(
+      applyFilter([a, b, c], "all", null, new Set([4])).map(
+        (x) => x.base_name,
+      ),
+    ).toEqual(["A", "B", "C"]);
   });
 
   it("filters by tag when given", () => {

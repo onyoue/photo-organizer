@@ -38,6 +38,7 @@ import {
   FILTER_LABELS,
   FILTER_MODES,
   type FilterMode,
+  type RatingFilter,
 } from "./utils/filter";
 import "./App.css";
 
@@ -85,6 +86,9 @@ function App() {
   const [thumbBust, setThumbBust] = useState<Map<string, number>>(new Map());
 
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
+  const [ratingFilters, setRatingFilters] = useState<ReadonlySet<RatingFilter>>(
+    new Set(),
+  );
   const [filterTag, setFilterTag] = useState<string | null>(null);
 
   // null = auto (uses previewVariants[0]); a number is an explicit index into
@@ -452,9 +456,21 @@ function App() {
   // this slice — the underlying index.bundles is the source of truth and
   // should rarely be referenced directly outside of file-op handlers.
   const filteredBundles = useMemo(
-    () => (index ? applyFilter(index.bundles, filterMode, filterTag) : []),
-    [index, filterMode, filterTag],
+    () =>
+      index
+        ? applyFilter(index.bundles, filterMode, filterTag, ratingFilters)
+        : [],
+    [index, filterMode, filterTag, ratingFilters],
   );
+
+  const toggleRatingFilter = useCallback((rating: RatingFilter) => {
+    setRatingFilters((current) => {
+      const next = new Set(current);
+      if (next.has(rating)) next.delete(rating);
+      else next.add(rating);
+      return next;
+    });
+  }, []);
 
   const availableTags = useMemo(
     () => (index ? distinctTags(index.bundles) : []),
@@ -782,7 +798,12 @@ function App() {
         // "Next" should be a still-visible neighbour, not just the next bundle
         // in the unfiltered list — otherwise deleting a pick while the Pick
         // filter is on jumps to a bundle that's invisible.
-        const visibleBefore = applyFilter(prev.bundles, filterMode, filterTag);
+        const visibleBefore = applyFilter(
+          prev.bundles,
+          filterMode,
+          filterTag,
+          ratingFilters,
+        );
         const removedVisibleIndices = visibleBefore
           .map((b, i) => (removedIds.has(b.bundle_id) ? i : -1))
           .filter((i) => i >= 0);
@@ -794,7 +815,12 @@ function App() {
         const remaining = prev.bundles.filter(
           (b) => !removedIds.has(b.bundle_id),
         );
-        const visibleAfter = applyFilter(remaining, filterMode, filterTag);
+        const visibleAfter = applyFilter(
+          remaining,
+          filterMode,
+          filterTag,
+          ratingFilters,
+        );
 
         if (visibleAfter.length === 0) {
           resetSelection();
@@ -808,7 +834,7 @@ function App() {
         return { ...prev, bundles: remaining };
       });
     },
-    [filterMode, filterTag],
+    [filterMode, filterTag, ratingFilters],
   );
 
   type OpScope = "all" | "developed";
@@ -1811,6 +1837,23 @@ function App() {
               onClick={() => setFilterMode(m)}
             >
               {FILTER_LABELS[m]}
+            </button>
+          ))}
+          <span className="filter-sep" aria-hidden="true">
+            ·
+          </span>
+          <span className="filter-label">Rating</span>
+          {([0, 1, 2, 3, 4, 5] as const).map((rating) => (
+            <button
+              key={rating}
+              type="button"
+              className={`filter-chip${
+                ratingFilters.has(rating) ? " active" : ""
+              }`}
+              aria-pressed={ratingFilters.has(rating)}
+              onClick={() => toggleRatingFilter(rating)}
+            >
+              {rating === 0 ? "Unrated" : `${rating}★`}
             </button>
           ))}
           {availableTags.length > 0 && (

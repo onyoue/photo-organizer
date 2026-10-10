@@ -5,12 +5,11 @@ export type FilterMode =
   | "pick"
   | "ok"
   | "reject"
-  | "unrated"
-  | "rated3orless"
-  | "rated4plus"
   | "hasposts"
   | "noposts"
   | "hasdeveloped";
+
+export type RatingFilter = 0 | 1 | 2 | 3 | 4 | 5;
 
 export const FILTER_LABELS: Record<FilterMode, string> = {
   all: "All",
@@ -19,12 +18,6 @@ export const FILTER_LABELS: Record<FilterMode, string> = {
   pick: "★ FAV",
   ok: "✓ OK",
   reject: "✕ NG",
-  unrated: "Unrated",
-  // ≤3★ includes unrated by design — the cull-candidate question is
-  // "not a keeper" and an untouched bundle qualifies just like a
-  // 1-star one does. Pair with `rated4plus` to partition the grid.
-  rated3orless: "≤3★",
-  rated4plus: "4★+",
   hasposts: "Posted",
   noposts: "Not posted",
   hasdeveloped: "Developed",
@@ -35,9 +28,6 @@ export const FILTER_MODES: FilterMode[] = [
   "pick",
   "ok",
   "reject",
-  "unrated",
-  "rated3orless",
-  "rated4plus",
   "hasposts",
   "noposts",
   "hasdeveloped",
@@ -47,9 +37,12 @@ export function applyFilter(
   bundles: BundleSummary[],
   mode: FilterMode,
   tag: string | null = null,
+  ratings: ReadonlySet<RatingFilter> = new Set(),
 ): BundleSummary[] {
-  if (mode === "all" && !tag) return bundles;
-  return bundles.filter((b) => matchMode(b, mode) && matchTag(b, tag));
+  if (mode === "all" && !tag && ratings.size === 0) return bundles;
+  return bundles.filter(
+    (b) => matchMode(b, mode) && matchTag(b, tag) && matchRating(b, ratings),
+  );
 }
 
 function matchMode(b: BundleSummary, mode: FilterMode): boolean {
@@ -62,14 +55,6 @@ function matchMode(b: BundleSummary, mode: FilterMode): boolean {
       return b.flag === "ok";
     case "reject":
       return b.flag === "reject";
-    case "unrated":
-      // Sidecar doesn't store rating=0, but UI treats 0 as "no rating" too.
-      return b.rating === undefined || b.rating === 0;
-    case "rated3orless":
-      // Includes unrated (no rating === ≤3 for the cull-candidate question).
-      return (b.rating ?? 0) <= 3;
-    case "rated4plus":
-      return (b.rating ?? 0) >= 4;
     case "hasposts":
       return b.has_posts;
     case "noposts":
@@ -77,6 +62,15 @@ function matchMode(b: BundleSummary, mode: FilterMode): boolean {
     case "hasdeveloped":
       return b.files.some((f) => f.role === "developed");
   }
+}
+
+function matchRating(
+  b: BundleSummary,
+  ratings: ReadonlySet<RatingFilter>,
+): boolean {
+  if (ratings.size === 0) return true;
+  // Sidecars omit an unrated value; normalize it to 0 for the filter chip.
+  return ratings.has((b.rating ?? 0) as RatingFilter);
 }
 
 function matchTag(b: BundleSummary, tag: string | null): boolean {
